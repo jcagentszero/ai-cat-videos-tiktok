@@ -84,4 +84,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement StorageManager.next_video_path — date-stamped output file naming <!-- files: storage/manager.py -->
 - [x] Implement StorageManager.save_run — write run records to logs/run_history.json <!-- files: storage/manager.py -->
 - [x] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
+- [x] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
 <!-- Completed tasks moved here -->
