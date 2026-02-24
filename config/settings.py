@@ -27,11 +27,12 @@ VEO_REGION      = os.getenv("VEO_REGION", "us-central1")
 TIKTOK_CLIENT_KEY    = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
 TIKTOK_ACCESS_TOKEN  = os.getenv("TIKTOK_ACCESS_TOKEN", "")
+TIKTOK_REFRESH_TOKEN = os.getenv("TIKTOK_REFRESH_TOKEN", "")
 TIKTOK_OPEN_ID       = os.getenv("TIKTOK_OPEN_ID", "")
+TOKEN_FILE           = CREDS_DIR / "tiktok_tokens.json"
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 VIDEOS_PER_RUN           = int(os.getenv("VIDEOS_PER_RUN", "1"))
-MAX_VIDEO_DURATION       = int(os.getenv("MAX_VIDEO_DURATION_SECONDS", "15"))
 DRY_RUN                  = os.getenv("DRY_RUN", "false").lower() == "true"
 
 # ── Scheduling ────────────────────────────────────────────────────────────────
