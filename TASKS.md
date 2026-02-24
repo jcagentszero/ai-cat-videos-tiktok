@@ -16,7 +16,7 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 ## 🔴 Phase 1 — Foundation (must complete before anything works)
 
 
-- [ ] Implement StorageManager.next_video_path — date-stamped output file naming <!-- files: storage/manager.py -->
+
 - [ ] Implement StorageManager.save_run — write run records to logs/run_history.json <!-- files: storage/manager.py -->
 - [ ] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
 
@@ -83,4 +83,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 - [x] Implement config validation — raise clear errors if required env vars are missing at startup <!-- files: config/settings.py -->
 - [x] Set up structured logging — configure loguru with file rotation and console output <!-- files: utils/logger.py -->
+- [x] Implement StorageManager.next_video_path — date-stamped output file naming <!-- files: storage/manager.py -->
 <!-- Completed tasks moved here -->

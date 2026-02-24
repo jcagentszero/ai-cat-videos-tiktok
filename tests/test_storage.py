@@ -1,3 +1,4 @@
+import json
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,11 @@ def storage(tmp_path):
          patch("config.settings.LOGS_DIR", logs_dir):
         mgr = StorageManager()
         yield mgr
+
+
+@pytest.fixture
+def run_log(tmp_path):
+    return tmp_path / "logs" / "run_history.json"
 
 
 class TestNextVideoPath:
@@ -61,3 +67,56 @@ class TestNextVideoPath:
         with patch("config.settings.OUTPUT_DIR", output_dir):
             path = storage.next_video_path()
         assert path.stem.endswith("_001")
+
+
+class TestSaveRun:
+    def test_creates_file_when_missing(self, storage, run_log):
+        video = Path("/tmp/output/video_20260224_001.mp4")
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("a cat sleeping", video, {"status": "ok"})
+        assert run_log.exists()
+        records = json.loads(run_log.read_text())
+        assert len(records) == 1
+        assert records[0]["prompt"] == "a cat sleeping"
+
+    def test_appends_to_existing(self, storage, run_log):
+        video = Path("/tmp/output/video_20260224_001.mp4")
+        run_log.write_text(json.dumps([{"prompt": "old"}]))
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("new prompt", video, {"status": "ok"})
+        records = json.loads(run_log.read_text())
+        assert len(records) == 2
+        assert records[0]["prompt"] == "old"
+        assert records[1]["prompt"] == "new prompt"
+
+    def test_record_has_expected_fields(self, storage, run_log):
+        video = Path("/tmp/output/video_20260224_001.mp4")
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("cat on keyboard", video, {"published": True})
+        record = json.loads(run_log.read_text())[0]
+        assert "timestamp" in record
+        assert record["video_path"] == str(video)
+        assert record["result"] == {"published": True}
+
+    def test_handles_corrupt_json(self, storage, run_log):
+        run_log.write_text("not valid json{{{")
+        video = Path("/tmp/output/video_20260224_001.mp4")
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("a cat jumping", video, {})
+        records = json.loads(run_log.read_text())
+        assert len(records) == 1
+        assert records[0]["prompt"] == "a cat jumping"
+
+    def test_stores_video_path_as_string(self, storage, run_log):
+        video = Path("/tmp/output/video_20260224_002.mp4")
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("cat stretching", video, {})
+        record = json.loads(run_log.read_text())[0]
+        assert isinstance(record["video_path"], str)
+
+    def test_timestamp_is_iso_format(self, storage, run_log):
+        video = Path("/tmp/output/video_20260224_001.mp4")
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.save_run("cat yawning", video, {})
+        record = json.loads(run_log.read_text())[0]
+        datetime.fromisoformat(record["timestamp"])

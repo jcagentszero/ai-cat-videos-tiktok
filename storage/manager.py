@@ -30,9 +30,31 @@ class StorageManager:
     def save_run(self, prompt: str, video_path: Path, result: dict) -> None:
         """
         Append a run record to run_history.json.
-        TODO: implement
         """
-        raise NotImplementedError
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "prompt": prompt,
+            "video_path": str(video_path),
+            "result": result,
+        }
+
+        try:
+            if RUN_LOG.exists():
+                history = json.loads(RUN_LOG.read_text())
+            else:
+                history = []
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read {}, starting fresh: {}", RUN_LOG, exc)
+            history = []
+
+        history.append(record)
+
+        try:
+            RUN_LOG.write_text(json.dumps(history, indent=2) + "\n")
+            logger.info("Saved run record for prompt: {!r}", prompt[:80])
+        except OSError as exc:
+            logger.error("Failed to write run history to {}: {}", RUN_LOG, exc)
+            raise
 
     def get_recent_prompts(self, n: int = 10) -> list[str]:
         """
