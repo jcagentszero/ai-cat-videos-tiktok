@@ -6,7 +6,7 @@
 
 1. ~~**Config validation** — raise clear errors if required env vars missing at startup~~ ✅
 2. ~~**Structured logging** — configure loguru with file rotation and console output~~ ✅
-3. **StorageManager methods** — next_video_path, save_run, get_recent_prompts
+3. **StorageManager methods** — ~~next_video_path~~ ✅, save_run, get_recent_prompts
 4. **Veo 3 integration** — initialize client, poll jobs, download videos
 5. **TikTok publishing** — OAuth flow, token persistence, upload + post
 6. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
@@ -26,3 +26,4 @@
 
 - **Config validation** — `validate_config()` in `config/settings.py`, wired into `main.py`, 9 tests in `tests/test_config.py`
 - **Structured logging** — `setup_logging()` in `utils/logger.py`, console (stderr, LOG_LEVEL) + file rotation (daily, 30-day retention, DEBUG), 5 tests in `tests/test_logger.py`
+- **StorageManager.next_video_path** — date-stamped `video_YYYYMMDD_NNN.mp4` naming with auto-incrementing sequence, 6 tests in `tests/test_storage.py`

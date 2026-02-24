@@ -16,6 +16,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from config import settings
+from utils.logger import logger
 
 RUN_LOG = settings.ROOT_DIR / "logs" / "run_history.json"
 
@@ -43,9 +44,23 @@ class StorageManager:
     def next_video_path(self) -> Path:
         """
         Return the next output file path, e.g. output/video_20260224_001.mp4
-        TODO: implement
         """
-        raise NotImplementedError
+        today = datetime.now().strftime("%Y%m%d")
+        prefix = f"video_{today}_"
+
+        existing = sorted(settings.OUTPUT_DIR.glob(f"{prefix}*.mp4"))
+        if existing:
+            last = existing[-1].stem
+            try:
+                seq = int(last.rsplit("_", 1)[1]) + 1
+            except (ValueError, IndexError):
+                seq = 1
+        else:
+            seq = 1
+
+        path = settings.OUTPUT_DIR / f"{prefix}{seq:03d}.mp4"
+        logger.debug("Next video path: {}", path)
+        return path
 
     def cleanup_old_videos(self, keep_last: int = 30) -> None:
         """
