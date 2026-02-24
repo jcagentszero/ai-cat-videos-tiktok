@@ -16,6 +16,7 @@ import argparse
 import sys
 
 from config.settings import validate_config
+from utils.logger import logger
 
 
 def parse_args():
@@ -33,7 +34,7 @@ def main():
     try:
         validate_config(dry_run=args.dry_run)
     except ValueError as e:
-        print(f"Configuration error: {e}", file=sys.stderr)
+        logger.error("Configuration error: {}", e)
         sys.exit(1)
 
     # TODO: override DRY_RUN from args if --dry-run passed

@@ -35,6 +35,7 @@ TOKEN_FILE           = CREDS_DIR / "tiktok_tokens.json"
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 VIDEOS_PER_RUN           = int(os.getenv("VIDEOS_PER_RUN", "1"))
 DRY_RUN                  = os.getenv("DRY_RUN", "false").lower() == "true"
+LOG_LEVEL                = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scheduling ────────────────────────────────────────────────────────────────
 POST_SCHEDULE_CRON = os.getenv("POST_SCHEDULE_CRON", "0 18 * * *")
