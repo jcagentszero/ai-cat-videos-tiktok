@@ -1,0 +1,22 @@
+# Core
+python-dotenv==1.0.0
+
+# Google Cloud / Veo 3
+# TODO: confirm correct SDK package name when Veo 3 API is GA
+google-cloud-aiplatform>=1.60.0
+google-auth>=2.29.0
+
+# TikTok
+# TODO: evaluate official TikTok Python SDK vs raw requests
+requests==2.32.5
+
+# Video processing
+# TODO: add ffmpeg-python if video trimming/resizing needed
+# ffmpeg-python==0.2.0
+
+# Scheduling (if running as a daemon rather than cron)
+# APScheduler==3.10.4
+
+# Utilities
+loguru==0.7.2         # structured logging
+tenacity==9.0.0       # retry logic
