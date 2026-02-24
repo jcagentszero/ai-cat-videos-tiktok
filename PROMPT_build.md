@@ -20,6 +20,7 @@ Study these files before making any changes:
 4. **Do not add comments, docstrings, or type annotations** to code you didn't change.
 5. **Run validation** after making changes — execute lint and test commands from AGENTS.md.
 6. **One task, one focus** — if you discover adjacent issues, note them in IMPLEMENTATION_PLAN.md instead of fixing them.
+7. **Use structured logging** — use `from utils.logger import logger` for all logging. Never use print(). Handle errors with try/except and log them.
 
 ## Subagent Strategy
 
