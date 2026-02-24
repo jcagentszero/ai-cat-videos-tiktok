@@ -6,6 +6,7 @@ All modules import from here — never read os.environ directly elsewhere.
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -40,9 +41,32 @@ POST_SCHEDULE_CRON = os.getenv("POST_SCHEDULE_CRON", "0 18 * * *")
 POST_TIMEZONE      = os.getenv("POST_TIMEZONE", "America/Los_Angeles")
 
 # ── Validation ────────────────────────────────────────────────────────────────
-# TODO: implement validate_config() to fail fast on missing required values
 
-def validate_config():
-    """Raise ValueError if any required setting is missing."""
-    # TODO: implement
-    raise NotImplementedError
+_REQUIRED = {
+    "GOOGLE_CLOUD_PROJECT_ID": "GCP_PROJECT_ID",
+    "GOOGLE_APPLICATION_CREDENTIALS": "GCP_CREDENTIALS",
+    "TIKTOK_CLIENT_KEY": "TIKTOK_CLIENT_KEY",
+    "TIKTOK_CLIENT_SECRET": "TIKTOK_CLIENT_SECRET",
+}
+
+_GCP_VARS = {"GOOGLE_CLOUD_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"}
+_TIKTOK_VARS = {"TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"}
+
+
+def validate_config(*, dry_run=False):
+    """Raise ValueError if any required setting is missing.
+
+    In dry-run mode, only GCP vars are required (TikTok is skipped).
+    """
+    mod = sys.modules[__name__]
+    required = _GCP_VARS if dry_run else _GCP_VARS | _TIKTOK_VARS
+    missing = [
+        env_name for env_name in sorted(required)
+        if not getattr(mod, _REQUIRED[env_name], "")
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Missing required environment variable(s): {', '.join(missing)}. "
+            "Set them in your .env file or shell environment."
+        )

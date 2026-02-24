@@ -15,6 +15,8 @@ TODO: implement argument parsing and pipeline invocation
 import argparse
 import sys
 
+from config.settings import validate_config
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI Cat Videos → TikTok Pipeline")
@@ -28,9 +30,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # TODO: validate config
-    # from config.settings import validate_config
-    # validate_config()
+    try:
+        validate_config(dry_run=args.dry_run)
+    except ValueError as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # TODO: override DRY_RUN from args if --dry-run passed
 

@@ -49,3 +49,4 @@ python -m pytest tests/ -v
 - Veo 3 API requires GCP service account credentials
 - TikTok OAuth tokens stored in `publishers/token_store.py`
 - Rate limits: Veo 3 has per-minute quotas, TikTok has daily post limits
+- `validate_config(dry_run=True)` skips TikTok var checks — use when testing GCP-only flows

@@ -4,7 +4,7 @@
 
 <!-- Ordered by dependency. Top task should be worked on next. -->
 
-1. **Config validation** — raise clear errors if required env vars missing at startup
+1. ~~**Config validation** — raise clear errors if required env vars missing at startup~~ ✅
 2. **Structured logging** — configure loguru with file rotation and console output
 3. **StorageManager methods** — next_video_path, save_run, get_recent_prompts
 4. **Veo 3 integration** — initialize client, poll jobs, download videos
@@ -16,10 +16,11 @@
 
 <!-- Architectural insights, risks, blockers found during planning/building -->
 
-_None yet — will be populated by plan and build iterations._
+- `config/settings.py` uses aligned-assignment style (E221); pre-existing, not worth reformatting
+- `validate_config()` reads module attrs at call time via `sys.modules` so values can be patched in tests
 
 ## Completed
 
 <!-- Tasks that have been finished -->
 
-_None yet._
+- **Config validation** — `validate_config()` in `config/settings.py`, wired into `main.py`, 9 tests in `tests/test_config.py`
