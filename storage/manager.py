@@ -59,9 +59,17 @@ class StorageManager:
     def get_recent_prompts(self, n: int = 10) -> list[str]:
         """
         Return the last n prompts used, to avoid repeats.
-        TODO: implement
         """
-        raise NotImplementedError
+        try:
+            if not RUN_LOG.exists():
+                return []
+            history = json.loads(RUN_LOG.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read {}, returning empty history: {}", RUN_LOG, exc)
+            return []
+
+        prompts = [r["prompt"] for r in history if isinstance(r, dict) and "prompt" in r]
+        return prompts[-n:]
 
     def next_video_path(self) -> Path:
         """

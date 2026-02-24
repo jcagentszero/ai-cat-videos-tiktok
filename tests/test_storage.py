@@ -120,3 +120,50 @@ class TestSaveRun:
             storage.save_run("cat yawning", video, {})
         record = json.loads(run_log.read_text())[0]
         datetime.fromisoformat(record["timestamp"])
+
+
+class TestGetRecentPrompts:
+    def test_returns_empty_when_no_file(self, storage, run_log):
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_recent_prompts() == []
+
+    def test_returns_all_prompts_when_fewer_than_n(self, storage, run_log):
+        history = [
+            {"prompt": "cat sleeping", "timestamp": "2026-01-01T00:00:00"},
+            {"prompt": "cat jumping", "timestamp": "2026-01-02T00:00:00"},
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_recent_prompts(n=10)
+        assert result == ["cat sleeping", "cat jumping"]
+
+    def test_returns_last_n_prompts(self, storage, run_log):
+        history = [{"prompt": f"prompt {i}"} for i in range(5)]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_recent_prompts(n=3)
+        assert result == ["prompt 2", "prompt 3", "prompt 4"]
+
+    def test_handles_corrupt_json(self, storage, run_log):
+        run_log.write_text("not valid json{{{")
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_recent_prompts() == []
+
+    def test_skips_records_without_prompt_key(self, storage, run_log):
+        history = [
+            {"prompt": "cat sleeping"},
+            {"no_prompt_here": True},
+            {"prompt": "cat jumping"},
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_recent_prompts()
+        assert result == ["cat sleeping", "cat jumping"]
+
+    def test_default_n_is_ten(self, storage, run_log):
+        history = [{"prompt": f"prompt {i}"} for i in range(15)]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_recent_prompts()
+        assert len(result) == 10
+        assert result[0] == "prompt 5"
