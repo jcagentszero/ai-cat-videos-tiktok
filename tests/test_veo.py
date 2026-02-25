@@ -304,3 +304,150 @@ class TestVeoDownloadVideo:
 
         assert result == dest
         assert result.exists()
+
+
+class TestVeoGenerate:
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_end_to_end_generate(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        mock_time.monotonic.side_effect = [0.0, 1.0]
+        _, client = mock_genai_client
+
+        operation = MagicMock(done=True, error=None)
+        operation.result.generated_videos = [MagicMock()]
+        operation.result.generated_videos[0].video.uri = "gs://bucket/video.mp4"
+        client.models.generate_videos.return_value = operation
+
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+
+        def fake_download(path):
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"fake video")
+        mock_blob.download_to_filename.side_effect = fake_download
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path):
+            gen = VeoGenerator()
+            result = gen.generate("a fluffy cat playing piano")
+
+        assert result.exists()
+        assert result.parent == tmp_path
+        assert result.suffix == ".mp4"
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_submits_correct_config(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        mock_time.monotonic.side_effect = [0.0, 1.0]
+        _, client = mock_genai_client
+
+        operation = MagicMock(done=True, error=None)
+        operation.result.generated_videos = [MagicMock()]
+        operation.result.generated_videos[0].video.uri = "gs://bucket/video.mp4"
+        client.models.generate_videos.return_value = operation
+
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+        mock_blob.download_to_filename.side_effect = lambda p: Path(p).write_bytes(b"v")
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path), \
+             patch("config.settings.VEO_MODEL", "veo-3.0-generate-001"):
+            gen = VeoGenerator()
+            gen.generate("cat prompt", duration_seconds=6)
+
+        call_kwargs = client.models.generate_videos.call_args
+        assert call_kwargs.kwargs["model"] == "veo-3.0-generate-001"
+        assert call_kwargs.kwargs["prompt"] == "cat prompt"
+        config = call_kwargs.kwargs["config"]
+        assert config.number_of_videos == 1
+        assert config.duration_seconds == 6
+        assert config.aspect_ratio == "9:16"
+        assert config.generate_audio is True
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_raises_on_submit_error(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        _, client = mock_genai_client
+        client.models.generate_videos.side_effect = RuntimeError("quota exceeded")
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path):
+            gen = VeoGenerator()
+            with pytest.raises(RuntimeError, match="quota exceeded"):
+                gen.generate("cat prompt")
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_polls_and_downloads(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        mock_time.monotonic.side_effect = [0.0, 5.0, 15.0]
+        _, client = mock_genai_client
+
+        pending = MagicMock(done=False)
+        done_op = MagicMock(done=True, error=None)
+        done_op.result.generated_videos = [MagicMock()]
+        done_op.result.generated_videos[0].video.uri = "gs://bucket/out/vid.mp4"
+        client.models.generate_videos.return_value = pending
+        client.operations.get.return_value = done_op
+
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+        mock_blob.download_to_filename.side_effect = lambda p: Path(p).write_bytes(b"v")
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path):
+            gen = VeoGenerator()
+            result = gen.generate("cat on skateboard")
+
+        client.operations.get.assert_called_once()
+        assert result.exists()
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_returns_path_in_output_dir(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        mock_time.monotonic.side_effect = [0.0, 1.0]
+        _, client = mock_genai_client
+
+        operation = MagicMock(done=True, error=None)
+        operation.result.generated_videos = [MagicMock()]
+        operation.result.generated_videos[0].video.uri = "gs://bucket/video.mp4"
+        client.models.generate_videos.return_value = operation
+
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+        mock_blob.download_to_filename.side_effect = lambda p: Path(p).write_bytes(b"v")
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path):
+            gen = VeoGenerator()
+            result = gen.generate("prompt")
+
+        assert str(result).startswith(str(tmp_path))
+        assert "video_" in result.name
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_propagates_poll_timeout(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        mock_time.monotonic.side_effect = [0.0, 301.0]
+        _, client = mock_genai_client
+
+        pending = MagicMock(done=False)
+        client.models.generate_videos.return_value = pending
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.OUTPUT_DIR", tmp_path):
+            gen = VeoGenerator()
+            with pytest.raises(TimeoutError):
+                gen.generate("cat prompt")

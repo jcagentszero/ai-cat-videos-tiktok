@@ -7,7 +7,7 @@
 1. ~~**Config validation** — raise clear errors if required env vars missing at startup~~ ✅
 2. ~~**Structured logging** — configure loguru with file rotation and console output~~ ✅
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
-4. **Veo 3 integration** — ~~initialize client~~, ~~poll jobs~~, ~~download videos~~
+4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok publishing** — OAuth flow, token persistence, upload + post
 6. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 7. **Scheduling** — cron/APScheduler, cleanup, daily digest
@@ -33,6 +33,8 @@
 - `_poll_job` accepts an operation object (not a string name) — `operations.get()` accepts both but passing the object preserves typed result access
 - `google-cloud-storage` is a transitive dependency of `google-genai` (already installed), but added explicitly to requirements.txt for `_download_video`
 - `__init__` stores `self._credentials` so GCS download can reuse the same service account credentials without re-loading from disk
+- `generate()` reads `settings.OUTPUT_DIR` at call time — tests must keep the patch active during the call, not just during `__init__`
+- `google.genai.types.GenerateVideosConfig` accepts snake_case params (`number_of_videos`, `duration_seconds`, `aspect_ratio`, `generate_audio`)
 
 ## Completed
 
@@ -46,3 +48,4 @@
 - **VeoGenerator.__init__** — loads service account credentials via `google.oauth2.service_account`, creates `genai.Client(vertexai=True)` with explicit project/region/credentials, stores `self.client` and `self.model`, 6 tests in `tests/test_veo.py`
 - **VeoGenerator._poll_job** — polls `client.operations.get(operation)` with exponential backoff (10s initial, 1.5x factor, 30s cap), raises `TimeoutError` on timeout, `RuntimeError` on operation error or empty results, returns first video URI, 7 tests in `tests/test_veo.py`
 - **VeoGenerator._download_video** — parses GCS URI into bucket/blob, downloads via `google-cloud-storage` using stored credentials, creates parent dirs, logs file size, 7 tests in `tests/test_veo.py`
+- **VeoGenerator.generate** — end-to-end: submits prompt to Veo 3 with 9:16 aspect ratio and audio, polls for completion, downloads to `settings.OUTPUT_DIR/video_YYYYMMDD_HHMMSS.mp4`, 6 tests in `tests/test_veo.py`

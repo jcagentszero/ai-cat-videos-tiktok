@@ -23,10 +23,12 @@ TODO: implement
 """
 
 import time
+from datetime import datetime
 from pathlib import Path
 
 from google import genai
 from google.cloud import storage as gcs
+from google.genai import types
 from google.oauth2 import service_account
 
 from config import settings
@@ -74,7 +76,36 @@ class VeoGenerator:
           3. Download video to settings.OUTPUT_DIR / <unique_filename>.mp4
           4. Return the path
         """
-        raise NotImplementedError
+        logger.info(
+            "Starting video generation (duration={}s) for prompt: {!r}",
+            duration_seconds, prompt[:80],
+        )
+
+        try:
+            operation = self.client.models.generate_videos(
+                model=self.model,
+                prompt=prompt,
+                config=types.GenerateVideosConfig(
+                    number_of_videos=1,
+                    duration_seconds=duration_seconds,
+                    aspect_ratio="9:16",
+                    generate_audio=True,
+                ),
+            )
+        except Exception as e:
+            logger.error("Failed to submit Veo generation request: {}", e)
+            raise
+
+        logger.info("Veo job submitted, polling for completion")
+        gcs_uri = self._poll_job(operation)
+
+        dest = settings.OUTPUT_DIR / "video_{}.mp4".format(
+            datetime.now().strftime("%Y%m%d_%H%M%S")
+        )
+        self._download_video(gcs_uri, dest)
+
+        logger.info("Video generation complete: {}", dest)
+        return dest
 
     def _poll_job(self, operation, timeout=300):
         """Poll Veo job until complete, return video URI."""
