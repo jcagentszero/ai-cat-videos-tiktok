@@ -8,8 +8,6 @@ Usage:
   python main.py --prompt "..."   # override the prompt
   python main.py --dry-run        # generate but don't post
   python main.py --category funny # use a specific prompt category
-
-TODO: implement argument parsing and pipeline invocation
 """
 
 import argparse
@@ -41,6 +39,10 @@ def main():
             sys.exit(1)
         return
 
+    if args.prompt and args.category:
+        logger.error("--prompt and --category are mutually exclusive")
+        sys.exit(1)
+
     try:
         validate_config(dry_run=args.dry_run)
     except ValueError as e:
@@ -51,10 +53,21 @@ def main():
         import config.settings as _settings
         _settings.DRY_RUN = True
 
+    prompt = args.prompt
+    if args.category:
+        from prompts.cat_prompts import CATEGORY_MAP
+        if args.category.lower() not in CATEGORY_MAP:
+            logger.error("Unknown category '{}'. Valid: {}",
+                         args.category, ", ".join(sorted(CATEGORY_MAP)))
+            sys.exit(1)
+        from prompts.cat_prompts import get_prompt_by_category
+        prompt = get_prompt_by_category(args.category)
+        logger.info("Selected prompt from category '{}'", args.category)
+
     from pipeline.runner import Pipeline
     for i in range(args.count):
         try:
-            result = Pipeline().run(prompt=args.prompt)
+            result = Pipeline().run(prompt=prompt)
             logger.info("Run {}/{} complete (status={})",
                         i + 1, args.count, result["status"])
         except Exception as e:

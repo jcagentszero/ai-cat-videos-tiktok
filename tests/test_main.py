@@ -57,3 +57,46 @@ class TestMainDryRun:
             main()
         assert self.pipeline_cls.call_count == 3
         assert self.pipeline_instance.run.call_count == 3
+
+
+class TestMainCategory:
+    @pytest.fixture(autouse=True)
+    def mock_validate(self):
+        with patch("main.validate_config"):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def mock_pipeline(self):
+        pipe_instance = MagicMock()
+        pipe_instance.run.return_value = {"status": "dry_run"}
+        with patch("pipeline.runner.Pipeline", return_value=pipe_instance) as cls:
+            self.pipeline_cls = cls
+            self.pipeline_instance = pipe_instance
+            yield
+
+    def test_category_selects_prompt(self):
+        with patch("sys.argv", ["main.py", "--dry-run", "--category", "funny"]):
+            with patch("prompts.cat_prompts.get_prompt_by_category",
+                       return_value="A funny cat prompt") as mock_get:
+                main()
+        mock_get.assert_called_once_with("funny")
+        self.pipeline_instance.run.assert_called_once_with(
+            prompt="A funny cat prompt",
+        )
+
+    def test_invalid_category_exits(self):
+        with patch("sys.argv", ["main.py", "--dry-run", "--category", "bogus"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 1
+
+    def test_prompt_and_category_mutually_exclusive(self):
+        with patch("sys.argv", ["main.py", "--prompt", "x", "--category", "cozy"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 1
+
+    def test_no_prompt_no_category_uses_none(self):
+        with patch("sys.argv", ["main.py", "--dry-run"]):
+            main()
+        self.pipeline_instance.run.assert_called_once_with(prompt=None)

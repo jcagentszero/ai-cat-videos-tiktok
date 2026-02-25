@@ -89,4 +89,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement Pipeline._handle_error — structured error logging with optional email notification <!-- files: pipeline/runner.py, utils/logger.py -->
 - [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
 - [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
+- [x] Implement DRY_RUN mode — skip publishing step, log what would have been posted <!-- files: pipeline/runner.py, config/settings.py -->
 <!-- Completed tasks moved here -->
