@@ -27,12 +27,47 @@ from datetime import datetime
 from pathlib import Path
 
 from google import genai
+from google.api_core import exceptions as google_exceptions
 from google.cloud import storage as gcs
 from google.genai import types
 from google.oauth2 import service_account
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from config import settings
 from utils.logger import logger
+
+_TRANSIENT_EXCEPTIONS = (
+    ConnectionError,
+    google_exceptions.ServiceUnavailable,
+    google_exceptions.TooManyRequests,
+    google_exceptions.InternalServerError,
+    google_exceptions.GatewayTimeout,
+    google_exceptions.DeadlineExceeded,
+)
+
+
+def _log_retry(retry_state):
+    logger.warning(
+        "Retrying {} (attempt {}): {}",
+        retry_state.fn.__name__,
+        retry_state.attempt_number,
+        retry_state.outcome.exception(),
+    )
+
+
+_api_retry = retry(
+    retry=retry_if_exception_type(_TRANSIENT_EXCEPTIONS),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    before_sleep=_log_retry,
+    reraise=True,
+    sleep=lambda s: time.sleep(s),
+)
 
 
 class VeoGenerator:
@@ -81,20 +116,7 @@ class VeoGenerator:
             duration_seconds, prompt[:80],
         )
 
-        try:
-            operation = self.client.models.generate_videos(
-                model=self.model,
-                prompt=prompt,
-                config=types.GenerateVideosConfig(
-                    number_of_videos=1,
-                    duration_seconds=duration_seconds,
-                    aspect_ratio="9:16",
-                    generate_audio=True,
-                ),
-            )
-        except Exception as e:
-            logger.error("Failed to submit Veo generation request: {}", e)
-            raise
+        operation = self._submit_job(prompt, duration_seconds)
 
         logger.info("Veo job submitted, polling for completion")
         gcs_uri = self._poll_job(operation)
@@ -106,6 +128,19 @@ class VeoGenerator:
 
         logger.info("Video generation complete: {}", dest)
         return dest
+
+    @_api_retry
+    def _submit_job(self, prompt, duration_seconds):
+        return self.client.models.generate_videos(
+            model=self.model,
+            prompt=prompt,
+            config=types.GenerateVideosConfig(
+                number_of_videos=1,
+                duration_seconds=duration_seconds,
+                aspect_ratio="9:16",
+                generate_audio=True,
+            ),
+        )
 
     def _poll_job(self, operation, timeout=300):
         """Poll Veo job until complete, return video URI."""
@@ -127,11 +162,7 @@ class VeoGenerator:
             time.sleep(interval)
             interval = min(interval * 1.5, max_interval)
 
-            try:
-                operation = self.client.operations.get(operation)
-            except Exception as e:
-                logger.error("Failed to poll Veo job: {}", e)
-                raise
+            operation = self._poll_once(operation)
 
         elapsed = time.monotonic() - start
 
@@ -149,6 +180,11 @@ class VeoGenerator:
         logger.info("Veo job completed in {:.1f}s", elapsed)
         return generated_videos[0].video.uri
 
+    @_api_retry
+    def _poll_once(self, operation):
+        return self.client.operations.get(operation)
+
+    @_api_retry
     def _download_video(self, gcs_uri: str, dest: Path) -> Path:
         """Download video from GCS URI to local path."""
         if not gcs_uri.startswith("gs://"):
@@ -160,22 +196,18 @@ class VeoGenerator:
 
         bucket_name, blob_name = parts
 
-        try:
-            storage_client = gcs.Client(
-                credentials=self._credentials,
-                project=settings.GCP_PROJECT_ID,
-            )
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
+        storage_client = gcs.Client(
+            credentials=self._credentials,
+            project=settings.GCP_PROJECT_ID,
+        )
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
 
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            blob.download_to_filename(str(dest))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        blob.download_to_filename(str(dest))
 
-            logger.info(
-                "Downloaded video to {} ({} bytes)",
-                dest, dest.stat().st_size,
-            )
-            return dest
-        except Exception as e:
-            logger.error("Failed to download video from {}: {}", gcs_uri, e)
-            raise
+        logger.info(
+            "Downloaded video to {} ({} bytes)",
+            dest, dest.stat().st_size,
+        )
+        return dest

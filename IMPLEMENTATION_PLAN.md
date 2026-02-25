@@ -35,6 +35,8 @@
 - `__init__` stores `self._credentials` so GCS download can reuse the same service account credentials without re-loading from disk
 - `generate()` reads `settings.OUTPUT_DIR` at call time — tests must keep the patch active during the call, not just during `__init__`
 - `google.genai.types.GenerateVideosConfig` accepts snake_case params (`number_of_videos`, `duration_seconds`, `aspect_ratio`, `generate_audio`)
+- Tenacity retry uses `sleep=lambda s: time.sleep(s)` to route through the module-level `time` import — tests that patch `generators.veo.time` automatically mock out tenacity's wait, avoiding real sleeps in tests
+- `_api_retry` decorator retries `ConnectionError` and Google API 429/5xx exceptions (3 attempts, exponential backoff 2-30s); non-transient errors propagate immediately
 
 ## Completed
 
@@ -49,3 +51,4 @@
 - **VeoGenerator._poll_job** — polls `client.operations.get(operation)` with exponential backoff (10s initial, 1.5x factor, 30s cap), raises `TimeoutError` on timeout, `RuntimeError` on operation error or empty results, returns first video URI, 7 tests in `tests/test_veo.py`
 - **VeoGenerator._download_video** — parses GCS URI into bucket/blob, downloads via `google-cloud-storage` using stored credentials, creates parent dirs, logs file size, 7 tests in `tests/test_veo.py`
 - **VeoGenerator.generate** — end-to-end: submits prompt to Veo 3 with 9:16 aspect ratio and audio, polls for completion, downloads to `settings.OUTPUT_DIR/video_YYYYMMDD_HHMMSS.mp4`, 6 tests in `tests/test_veo.py`
+- **Veo retry logic** — tenacity `@_api_retry` on `_submit_job`, `_poll_once`, `_download_video` for transient API errors (ConnectionError, 429, 5xx); 3 attempts with exponential backoff (2-30s); 4 tests in `tests/test_veo.py`

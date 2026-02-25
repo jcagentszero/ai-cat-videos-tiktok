@@ -451,3 +451,82 @@ class TestVeoGenerate:
             gen = VeoGenerator()
             with pytest.raises(TimeoutError):
                 gen.generate("cat prompt")
+
+
+class TestVeoRetry:
+    @patch("generators.veo.time")
+    def test_submit_retries_on_transient_error(
+        self, mock_time, mock_credentials, mock_genai_client
+    ):
+        _, client = mock_genai_client
+        operation = MagicMock()
+        client.models.generate_videos.side_effect = [
+            ConnectionError("transient"),
+            operation,
+        ]
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        result = gen._submit_job("cat prompt", 8)
+        assert result is operation
+        assert client.models.generate_videos.call_count == 2
+
+    @patch("generators.veo.time")
+    def test_poll_once_retries_on_transient_error(
+        self, mock_time, mock_credentials, mock_genai_client
+    ):
+        _, client = mock_genai_client
+        done_op = MagicMock()
+        client.operations.get.side_effect = [
+            ConnectionError("transient"),
+            done_op,
+        ]
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        result = gen._poll_once(MagicMock())
+        assert result is done_op
+        assert client.operations.get.call_count == 2
+
+    @patch("generators.veo.gcs")
+    @patch("generators.veo.time")
+    def test_download_retries_on_transient_error(
+        self, mock_time, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        dest = tmp_path / "video.mp4"
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+
+        call_count = 0
+
+        def flaky_download(path):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("transient network error")
+            Path(path).write_bytes(b"video data")
+
+        mock_blob.download_to_filename.side_effect = flaky_download
+
+        result = gen._download_video("gs://bucket/path/video.mp4", dest)
+        assert result == dest
+        assert call_count == 2
+
+    @patch("generators.veo.time")
+    def test_no_retry_on_non_transient_error(
+        self, mock_time, mock_credentials, mock_genai_client
+    ):
+        _, client = mock_genai_client
+        client.models.generate_videos.side_effect = RuntimeError("quota exceeded")
+
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        with pytest.raises(RuntimeError, match="quota exceeded"):
+            gen._submit_job("cat prompt", 8)
+        assert client.models.generate_videos.call_count == 1
