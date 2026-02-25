@@ -112,8 +112,43 @@ class TikTokPublisher:
         return result
 
     def _upload_video(self, upload_url: str, video_path: Path) -> bool:
-        """PUT video bytes to TikTok upload URL. TODO: implement."""
-        raise NotImplementedError
+        try:
+            video_bytes = video_path.read_bytes()
+        except OSError as exc:
+            logger.error("Failed to read video file {}: {}", video_path, exc)
+            raise RuntimeError(f"Failed to read video file {video_path}: {exc}") from exc
+
+        file_size = len(video_bytes)
+        headers = {
+            "Content-Type": "video/mp4",
+            "Content-Length": str(file_size),
+            "Content-Range": f"bytes 0-{file_size - 1}/{file_size}",
+        }
+
+        logger.debug(
+            "Uploading video to TikTok (file_size={}, url={})",
+            file_size, upload_url,
+        )
+
+        try:
+            resp = requests.put(
+                upload_url, headers=headers, data=video_bytes, timeout=300,
+            )
+        except requests.RequestException as exc:
+            logger.error("Upload request failed: {}", exc)
+            raise RuntimeError(f"Upload request failed: {exc}") from exc
+
+        if resp.status_code not in (200, 201):
+            logger.error(
+                "TikTok upload failed with status {}: {}",
+                resp.status_code, resp.text,
+            )
+            raise RuntimeError(
+                f"TikTok upload failed with status {resp.status_code}"
+            )
+
+        logger.info("Video uploaded successfully (file_size={})", file_size)
+        return True
 
     def _create_post(self, publish_id: str, caption: str) -> dict:
         """Submit post creation. TODO: implement."""

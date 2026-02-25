@@ -81,4 +81,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement OAuth 2.0 authorization code flow to get initial access + refresh tokens <!-- files: publishers/tiktok.py -->
 - [x] Implement token_store.py — JSON file read/write for OAuth token persistence <!-- files: publishers/token_store.py -->
 - [x] Implement TikTokPublisher.refresh_token — auto-refresh before expiry, persist via token_store <!-- files: publishers/tiktok.py, publishers/token_store.py -->
+- [x] Implement TikTokPublisher._init_upload — call Content Posting API init endpoint <!-- files: publishers/tiktok.py -->
 <!-- Completed tasks moved here -->

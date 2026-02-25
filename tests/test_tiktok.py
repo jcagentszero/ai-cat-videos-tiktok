@@ -461,3 +461,139 @@ class TestInitUploadErrors:
         with patch("publishers.tiktok.requests.post", return_value=resp):
             with pytest.raises(RuntimeError, match="access_token_invalid"):
                 pub._init_upload(1024)
+
+
+# ── _upload_video tests ──────────────────────────────────────────────────────
+
+
+UPLOAD_URL = "https://open-upload.tiktokapis.com/video/?upload_id=123"
+
+
+def _mock_upload_response(status_code=201):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.text = ""
+    return resp
+
+
+class TestUploadVideoSuccess:
+    def test_returns_true_on_201(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   return_value=_mock_upload_response(201)):
+            result = pub._upload_video(UPLOAD_URL, video)
+
+        assert result is True
+
+    def test_returns_true_on_200(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 512)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   return_value=_mock_upload_response(200)):
+            result = pub._upload_video(UPLOAD_URL, video)
+
+        assert result is True
+
+    def test_sends_correct_headers(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\xDE\xAD" * 500)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   return_value=_mock_upload_response()) as mock_put:
+            pub._upload_video(UPLOAD_URL, video)
+
+        mock_put.assert_called_once()
+        call_args = mock_put.call_args
+        assert call_args[0][0] == UPLOAD_URL
+        headers = call_args.kwargs.get("headers") or call_args[1].get("headers")
+        assert headers["Content-Type"] == "video/mp4"
+        assert headers["Content-Length"] == "1000"
+        assert headers["Content-Range"] == "bytes 0-999/1000"
+
+    def test_sends_video_bytes_as_data(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        content = b"\x00\x00\x00\x20ftypmp42"
+        video.write_bytes(content)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   return_value=_mock_upload_response()) as mock_put:
+            pub._upload_video(UPLOAD_URL, video)
+
+        call_args = mock_put.call_args
+        data = call_args.kwargs.get("data") or call_args[1].get("data")
+        assert data == content
+
+    def test_uses_300_second_timeout(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 100)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   return_value=_mock_upload_response()) as mock_put:
+            pub._upload_video(UPLOAD_URL, video)
+
+        call_args = mock_put.call_args
+        timeout = call_args.kwargs.get("timeout") or call_args[1].get("timeout")
+        assert timeout == 300
+
+
+class TestUploadVideoErrors:
+    def test_raises_on_file_not_found(self, tmp_path):
+        missing = tmp_path / "nonexistent.mp4"
+
+        pub = _make_publisher_with_token()
+        with pytest.raises(RuntimeError, match="Failed to read video file"):
+            pub._upload_video(UPLOAD_URL, missing)
+
+    def test_raises_on_http_error(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 100)
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put",
+                   side_effect=requests_lib.ConnectionError("Connection refused")):
+            with pytest.raises(RuntimeError, match="Upload request failed"):
+                pub._upload_video(UPLOAD_URL, video)
+
+    def test_raises_on_403_expired_url(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 100)
+
+        resp = _mock_upload_response(status_code=403)
+        resp.text = "Upload URL expired"
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put", return_value=resp):
+            with pytest.raises(RuntimeError, match="status 403"):
+                pub._upload_video(UPLOAD_URL, video)
+
+    def test_raises_on_416_range_error(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 100)
+
+        resp = _mock_upload_response(status_code=416)
+        resp.text = "Range Not Satisfiable"
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put", return_value=resp):
+            with pytest.raises(RuntimeError, match="status 416"):
+                pub._upload_video(UPLOAD_URL, video)
+
+    def test_raises_on_500_server_error(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 100)
+
+        resp = _mock_upload_response(status_code=500)
+        resp.text = "Internal Server Error"
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.put", return_value=resp):
+            with pytest.raises(RuntimeError, match="status 500"):
+                pub._upload_video(UPLOAD_URL, video)
