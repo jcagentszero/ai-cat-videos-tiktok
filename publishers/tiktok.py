@@ -17,6 +17,7 @@ API reference:
 TODO: implement
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -210,9 +211,83 @@ class TikTokPublisher:
 
         return result
 
-    def _check_status(self, publish_id: str) -> dict:
-        """Poll publish status until live or failed. TODO: implement."""
-        raise NotImplementedError
+    def _check_status(self, publish_id: str, timeout=120) -> dict:
+        url = f"{self.BASE_URL}/post/publish/status/fetch/"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        }
+        body = {"publish_id": publish_id}
+
+        interval = 5
+        max_interval = 15
+        start = time.monotonic()
+
+        while True:
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    f"Publish status check timed out after {timeout}s "
+                    f"(publish_id={publish_id})"
+                )
+
+            logger.debug(
+                "Polling publish status (publish_id={}, elapsed={:.0f}s)",
+                publish_id, elapsed,
+            )
+
+            try:
+                resp = requests.post(
+                    url, headers=headers, json=body, timeout=30,
+                )
+                resp.raise_for_status()
+            except requests.RequestException as exc:
+                logger.error("Status check request failed: {}", exc)
+                raise RuntimeError(
+                    f"Status check request failed: {exc}"
+                ) from exc
+
+            data = resp.json()
+
+            error = data.get("error", {})
+            if error.get("code") != "ok":
+                error_msg = (
+                    error.get("message") or error.get("code", "unknown")
+                )
+                logger.error("TikTok status check failed: {}", error_msg)
+                raise RuntimeError(
+                    f"TikTok status check failed: {error_msg}"
+                )
+
+            result = data.get("data", {})
+            status = result.get("status")
+
+            if status == "PUBLISH_COMPLETE":
+                logger.info(
+                    "Post published successfully (publish_id={})",
+                    publish_id,
+                )
+                return result
+
+            if status == "SEND_TO_USER_INBOX":
+                logger.info(
+                    "Post sent to user inbox (publish_id={})",
+                    publish_id,
+                )
+                return result
+
+            if status == "FAILED":
+                fail_reason = result.get("fail_reason", "unknown")
+                logger.error(
+                    "Post publish failed (publish_id={}, reason={})",
+                    publish_id, fail_reason,
+                )
+                raise RuntimeError(
+                    f"TikTok publish failed: {fail_reason}"
+                )
+
+            time.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
 
     def refresh_token(self) -> str:
         tokens = token_store.load_tokens()

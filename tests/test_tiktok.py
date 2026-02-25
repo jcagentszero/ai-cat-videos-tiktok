@@ -767,3 +767,198 @@ class TestCreatePostErrors:
         with patch("publishers.tiktok.requests.post", return_value=resp):
             with pytest.raises(RuntimeError, match="access_token_invalid"):
                 pub._create_post(1024, "cat vid")
+
+
+# ── _check_status tests ─────────────────────────────────────────────────────
+
+
+def _mock_status_response(status="PUBLISH_COMPLETE", fail_reason=None,
+                          **overrides):
+    data = {"status": status}
+    if fail_reason is not None:
+        data["fail_reason"] = fail_reason
+    if "data" in overrides:
+        data.update(overrides.pop("data"))
+    defaults = {
+        "data": data,
+        "error": {
+            "code": "ok",
+            "message": "",
+            "log_id": "20221011224844",
+        },
+    }
+    if "error" in overrides:
+        defaults["error"].update(overrides.pop("error"))
+    defaults.update(overrides)
+    resp = MagicMock()
+    resp.json.return_value = defaults
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+class TestCheckStatusSuccess:
+    def test_returns_data_on_publish_complete(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_status_response("PUBLISH_COMPLETE")), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            result = pub._check_status("pid_123")
+
+        assert result["status"] == "PUBLISH_COMPLETE"
+
+    def test_returns_data_on_send_to_inbox(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_status_response("SEND_TO_USER_INBOX")), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            result = pub._check_status("pid_456")
+
+        assert result["status"] == "SEND_TO_USER_INBOX"
+
+    def test_polls_until_complete(self):
+        responses = [
+            _mock_status_response("PROCESSING_UPLOAD"),
+            _mock_status_response("PUBLISH_COMPLETE"),
+        ]
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   side_effect=responses), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 5, 10]), \
+             patch("publishers.tiktok.time.sleep") as mock_sleep:
+            result = pub._check_status("pid_789")
+
+        assert result["status"] == "PUBLISH_COMPLETE"
+        mock_sleep.assert_called_once_with(5)
+
+    def test_sends_correct_url_and_headers(self):
+        pub = _make_publisher_with_token("my_token")
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_status_response()) as mock_post, \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub._check_status("pid_123")
+
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == (
+            "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
+        )
+        headers = call_args.kwargs.get("headers") or call_args[1].get("headers")
+        assert headers["Authorization"] == "Bearer my_token"
+        assert "application/json" in headers["Content-Type"]
+
+    def test_sends_publish_id_in_body(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_status_response()) as mock_post, \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub._check_status("pid_body_test")
+
+        call_args = mock_post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert body["publish_id"] == "pid_body_test"
+
+    def test_polls_through_download_status(self):
+        responses = [
+            _mock_status_response("PROCESSING_UPLOAD"),
+            _mock_status_response("PROCESSING_DOWNLOAD"),
+            _mock_status_response("PUBLISH_COMPLETE"),
+        ]
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   side_effect=responses), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 5, 10, 15]), \
+             patch("publishers.tiktok.time.sleep"):
+            result = pub._check_status("pid_multi")
+
+        assert result["status"] == "PUBLISH_COMPLETE"
+
+
+class TestCheckStatusErrors:
+    def test_raises_on_failed_status(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_status_response(
+                       "FAILED", fail_reason="video_too_short",
+                   )), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="video_too_short"):
+                pub._check_status("pid_fail")
+
+    def test_raises_on_failed_unknown_reason(self):
+        resp = _mock_status_response("FAILED")
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="unknown"):
+                pub._check_status("pid_fail_no_reason")
+
+    def test_raises_on_timeout(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 200]):
+            with pytest.raises(TimeoutError, match="timed out"):
+                pub._check_status("pid_timeout")
+
+    def test_raises_on_http_error(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = requests_lib.HTTPError(
+            "500 Server Error"
+        )
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=mock_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="Status check request failed"):
+                pub._check_status("pid_http_err")
+
+    def test_raises_on_connection_error(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   side_effect=requests_lib.ConnectionError(
+                       "Connection refused"
+                   )), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="Status check request failed"):
+                pub._check_status("pid_conn_err")
+
+    def test_raises_on_api_error_code(self):
+        resp = _mock_status_response()
+        resp.json.return_value["error"] = {
+            "code": "invalid_publish_id",
+            "message": "Publish ID does not exist",
+        }
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="Publish ID does not exist"):
+                pub._check_status("pid_bad")
+
+    def test_raises_on_rate_limit(self):
+        resp = _mock_status_response()
+        resp.json.return_value["error"] = {
+            "code": "rate_limit_exceeded",
+            "message": "Rate limit exceeded",
+        }
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            with pytest.raises(RuntimeError, match="Rate limit exceeded"):
+                pub._check_status("pid_rate")
