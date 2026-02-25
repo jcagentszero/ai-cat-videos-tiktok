@@ -7,7 +7,7 @@
 1. ~~**Config validation** — raise clear errors if required env vars missing at startup~~ ✅
 2. ~~**Structured logging** — configure loguru with file rotation and console output~~ ✅
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
-4. **Veo 3 integration** — initialize client, poll jobs, download videos
+4. **Veo 3 integration** — ~~initialize client~~, poll jobs, download videos
 5. **TikTok publishing** — OAuth flow, token persistence, upload + post
 6. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 7. **Scheduling** — cron/APScheduler, cleanup, daily digest
@@ -40,3 +40,4 @@
 - **StorageManager.next_video_path** — date-stamped `video_YYYYMMDD_NNN.mp4` naming with auto-incrementing sequence, 6 tests in `tests/test_storage.py`
 - **StorageManager.save_run** — appends run records (timestamp, prompt, video_path, result) to `logs/run_history.json` with corrupt-file recovery, 6 tests in `tests/test_storage.py`
 - **StorageManager.get_recent_prompts** — reads last N prompts from run history with corrupt-file and malformed-record resilience, 6 tests in `tests/test_storage.py`
+- **VeoGenerator.__init__** — loads service account credentials via `google.oauth2.service_account`, creates `genai.Client(vertexai=True)` with explicit project/region/credentials, stores `self.client` and `self.model`, 6 tests in `tests/test_veo.py`

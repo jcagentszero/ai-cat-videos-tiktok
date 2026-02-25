@@ -23,17 +23,36 @@ TODO: implement
 """
 
 from pathlib import Path
+
+from google import genai
+from google.oauth2 import service_account
+
 from config import settings
+from utils.logger import logger
 
 
 class VeoGenerator:
     """Wraps Google Veo 3 video generation API."""
 
     def __init__(self):
-        # TODO: initialize Google Cloud AI Platform client
-        # from google.cloud import aiplatform
-        # aiplatform.init(project=settings.GCP_PROJECT_ID, location=settings.VEO_REGION)
-        raise NotImplementedError
+        try:
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.GCP_CREDENTIALS
+            )
+            self.client = genai.Client(
+                vertexai=True,
+                project=settings.GCP_PROJECT_ID,
+                location=settings.VEO_REGION,
+                credentials=credentials,
+            )
+            self.model = settings.VEO_MODEL
+            logger.info(
+                "VeoGenerator initialized (project={}, region={}, model={})",
+                settings.GCP_PROJECT_ID, settings.VEO_REGION, self.model,
+            )
+        except Exception as e:
+            logger.error("Failed to initialize VeoGenerator: {}", e)
+            raise
 
     def generate(self, prompt: str, duration_seconds: int = 8) -> Path:
         """
