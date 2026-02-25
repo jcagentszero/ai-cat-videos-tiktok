@@ -22,7 +22,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 3 — TikTok Publishing
 
-- [ ] Implement token_store.py — JSON file read/write for OAuth token persistence <!-- files: publishers/token_store.py -->
 - [ ] Implement TikTokPublisher.refresh_token — auto-refresh before expiry, persist via token_store <!-- files: publishers/tiktok.py, publishers/token_store.py -->
 - [ ] Implement TikTokPublisher._init_upload — call Content Posting API init endpoint <!-- files: publishers/tiktok.py -->
 - [ ] Implement TikTokPublisher._upload_video — chunk upload to TikTok upload URL <!-- files: publishers/tiktok.py -->
@@ -81,4 +80,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Write smoke test: generate one video, confirm file exists and is valid MP4 <!-- files: generators/veo.py -->
 - [x] Create TikTok Developer account and app at developers.tiktok.com, obtain client key/secret <!-- files: .env.example -->
 - [x] Implement OAuth 2.0 authorization code flow to get initial access + refresh tokens <!-- files: publishers/tiktok.py -->
+- [x] Implement token_store.py — JSON file read/write for OAuth token persistence <!-- files: publishers/token_store.py -->
 <!-- Completed tasks moved here -->

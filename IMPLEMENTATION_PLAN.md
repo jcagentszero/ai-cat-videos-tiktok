@@ -9,7 +9,7 @@
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
-6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, upload + post
+6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, upload + post
 7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
@@ -42,6 +42,7 @@
 - **TikTok Developer App setup**: requires manual registration at developers.tiktok.com; Content Posting API needs `video.upload` + `video.publish` scopes; new apps start in sandbox mode; app review required for public posting; OAuth redirect URI needed for token flow
 - **TikTok OAuth flow**: authorization URL is `https://www.tiktok.com/v2/auth/authorize/`, token exchange is `POST https://open.tiktokapis.com/v2/oauth/token/`; redirect URI must be registered in TikTok app settings (default: `http://localhost:8080/callback`); token exchange returns `access_token`, `refresh_token`, `open_id`, `expires_in`; `token_store.save_tokens` now accepts optional `open_id` kwarg
 - `PosixPath` attributes (`read_text`, `write_text`) are read-only in Python 3.14 — use `os.chmod` or filesystem-level techniques instead of `patch.object` for testing I/O errors
+- **TikTok token refresh**: same endpoint as exchange (`POST https://open.tiktokapis.com/v2/oauth/token/`) with `grant_type=refresh_token`; response shape matches initial exchange (`access_token`, `refresh_token`, `open_id`, `expires_in`); `TikTokPublisher.__init__` still raises `NotImplementedError` — use `object.__new__(TikTokPublisher)` to test `refresh_token` in isolation
 
 ## Completed
 
@@ -60,3 +61,4 @@
 - **Veo smoke test** — end-to-end integration test that calls real Veo API, validates output exists and has valid MP4 ftyp header; auto-skips when GCP credentials unavailable; `pytest.mark.smoke` marker; 1 test in `tests/test_veo_smoke.py`
 - **TikTok OAuth flow** — `publishers/oauth.py`: `build_auth_url(state)`, `exchange_code(code)`, `run_oauth_flow()` with local callback server, CSRF state validation, and token persistence; `--auth` flag in `main.py`; `token_store.save_tokens` extended with optional `open_id`; 23 tests in `tests/test_oauth.py`
 - **Token persistence** — `publishers/token_store.py`: `load_tokens()` and `save_tokens()` with JSON file read/write to `credentials/tiktok_tokens.json`; structured logging via loguru; corrupt-file recovery on load (returns `{}`); write-error propagation with logging; 12 tests in `tests/test_token_store.py`
+- **Token refresh** — `TikTokPublisher.refresh_token()` in `publishers/tiktok.py`: loads tokens from `token_store`, checks `expires_at` against 5-minute buffer (`REFRESH_BUFFER_SECONDS=300`), skips if still valid, POSTs to TikTok refresh endpoint with `grant_type=refresh_token`, persists new tokens via `token_store.save_tokens()`, preserves `open_id` from stored tokens if not in refresh response; 14 tests in `tests/test_tiktok.py`
