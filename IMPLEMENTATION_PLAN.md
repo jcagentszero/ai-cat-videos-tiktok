@@ -9,7 +9,7 @@
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
-6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, ~~init upload~~, ~~chunk upload~~ + post
+6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, ~~init upload~~, ~~chunk upload~~, ~~post~~ + status check
 7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
@@ -45,6 +45,7 @@
 - **TikTok token refresh**: same endpoint as exchange (`POST https://open.tiktokapis.com/v2/oauth/token/`) with `grant_type=refresh_token`; response shape matches initial exchange (`access_token`, `refresh_token`, `open_id`, `expires_in`); `TikTokPublisher.__init__` still raises `NotImplementedError` — use `object.__new__(TikTokPublisher)` to test `refresh_token` in isolation
 - **TikTok init upload**: `POST /v2/post/publish/video/init/` with `Authorization: Bearer {token}` header; body: `{"source_info": {"source": "FILE_UPLOAD", "video_size": N, "chunk_size": N, "total_chunk_count": N}}`; response wraps data in `{"data": {...}, "error": {"code": "ok", ...}}`; `upload_url` valid for 1 hour; rate limit: 6 req/min per user; direct post endpoint (not inbox) requires `video.publish` scope; error codes include `spam_risk_too_many_pending_share` (max 5 pending in 24h)
 - **TikTok chunk upload**: `PUT {upload_url}` with `Content-Type: video/mp4`, `Content-Length`, `Content-Range: bytes 0-{size-1}/{size}`; single-chunk strategy sends entire file; response 201=complete, 206=partial (multi-chunk), 403=URL expired, 416=range mismatch; upload URL valid for 1 hour; 300s timeout recommended for large files
+- **TikTok create post**: TikTok API has NO separate "publish" endpoint — `post_info` must be included in the same `/v2/post/publish/video/init/` call alongside `source_info`; `_create_post` signature changed from `(publish_id, caption)` to `(file_size, caption, privacy_level)` since init returns `publish_id` rather than accepting it; `_init_upload` remains for upload-only (inbox) scenarios; `_create_post` handles direct posting with `post_info` (title, privacy_level, disable_duet/comment/stitch, is_aigc=True); default privacy is `SELF_ONLY` (required for unaudited apps); valid levels: `PUBLIC_TO_EVERYONE`, `MUTUAL_FOLLOW_FRIENDS`, `FOLLOWER_OF_CREATOR`, `SELF_ONLY`; `publish()` flow should use `_create_post` (not `_init_upload`) → `_upload_video` → `_check_status`
 
 ## Completed
 
@@ -66,3 +67,4 @@
 - **Token refresh** — `TikTokPublisher.refresh_token()` in `publishers/tiktok.py`: loads tokens from `token_store`, checks `expires_at` against 5-minute buffer (`REFRESH_BUFFER_SECONDS=300`), skips if still valid, POSTs to TikTok refresh endpoint with `grant_type=refresh_token`, persists new tokens via `token_store.save_tokens()`, preserves `open_id` from stored tokens if not in refresh response; 14 tests in `tests/test_tiktok.py`
 - **Init upload** — `TikTokPublisher._init_upload(file_size)` in `publishers/tiktok.py`: POSTs to `/v2/post/publish/video/init/` with `FILE_UPLOAD` source and single-chunk strategy (chunk_size=file_size), validates `error.code == "ok"` and presence of `publish_id`/`upload_url` in response, returns `data` dict; 10 tests in `tests/test_tiktok.py`
 - **Chunk upload** — `TikTokPublisher._upload_video(upload_url, video_path)` in `publishers/tiktok.py`: reads file bytes, PUTs to upload_url with `Content-Type: video/mp4`, `Content-Range`, `Content-Length` headers; validates 200/201 response; handles file read errors, HTTP errors, and non-success status codes; 10 tests in `tests/test_tiktok.py`
+- **Create post** — `TikTokPublisher._create_post(file_size, caption, privacy_level)` in `publishers/tiktok.py`: POSTs to `/v2/post/publish/video/init/` with both `post_info` (title, privacy_level, disable_duet/comment/stitch, is_aigc=True) and `source_info` (FILE_UPLOAD, single-chunk); defaults to `SELF_ONLY` privacy for unaudited apps; validates `error.code == "ok"` and presence of `publish_id`/`upload_url`; 12 tests in `tests/test_tiktok.py`

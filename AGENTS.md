@@ -54,3 +54,4 @@ python -m pytest tests/ -v
 - Veo 3 SDK is `google-genai` (not `google-cloud-aiplatform`); model ID is `veo-3.0-generate-001`
 - Smoke tests (`pytest -m smoke`) hit real APIs and require GCP credentials; unit tests auto-skip them
 - TikTok OAuth: `python main.py --auth` or `python -m publishers.oauth`; requires `http://localhost:8080/callback` registered as redirect URI in TikTok app settings
+- TikTok API has no separate "publish" endpoint — `post_info` (caption, privacy) goes in the same `/v2/post/publish/video/init/` call as `source_info`; use `_create_post` (not `_init_upload`) for direct posting

@@ -597,3 +597,173 @@ class TestUploadVideoErrors:
         with patch("publishers.tiktok.requests.put", return_value=resp):
             with pytest.raises(RuntimeError, match="status 500"):
                 pub._upload_video(UPLOAD_URL, video)
+
+
+# ── _create_post tests ──────────────────────────────────────────────────────
+
+
+def _mock_create_post_response(**overrides):
+    defaults = {
+        "data": {
+            "publish_id": "v_pub~v2.987654321",
+            "upload_url": "https://open-upload.tiktokapis.com/video/?upload_id=456",
+        },
+        "error": {
+            "code": "ok",
+            "message": "",
+            "log_id": "20221011224844",
+        },
+    }
+    if "data" in overrides:
+        defaults["data"].update(overrides.pop("data"))
+    if "error" in overrides:
+        defaults["error"].update(overrides.pop("error"))
+    defaults.update(overrides)
+    resp = MagicMock()
+    resp.json.return_value = defaults
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+class TestCreatePostSuccess:
+    def test_returns_data_dict(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_create_post_response()):
+            result = pub._create_post(1024000, "cute cat video")
+
+        assert result["publish_id"] == "v_pub~v2.987654321"
+        assert "upload_url" in result
+
+    def test_sends_correct_url_and_headers(self):
+        pub = _make_publisher_with_token("my_token")
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_create_post_response()) as mock_post:
+            pub._create_post(5000, "cat caption")
+
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == (
+            "https://open.tiktokapis.com/v2/post/publish/video/init/"
+        )
+        headers = call_args.kwargs.get("headers") or call_args[1].get("headers")
+        assert headers["Authorization"] == "Bearer my_token"
+        assert "application/json" in headers["Content-Type"]
+
+    def test_sends_post_info_and_source_info(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_create_post_response()) as mock_post:
+            pub._create_post(2048000, "funny cat #cats")
+
+        call_args = mock_post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+
+        post_info = body["post_info"]
+        assert post_info["title"] == "funny cat #cats"
+        assert post_info["privacy_level"] == "SELF_ONLY"
+        assert post_info["disable_duet"] is False
+        assert post_info["disable_comment"] is False
+        assert post_info["disable_stitch"] is False
+        assert post_info["is_aigc"] is True
+
+        source = body["source_info"]
+        assert source["source"] == "FILE_UPLOAD"
+        assert source["video_size"] == 2048000
+        assert source["chunk_size"] == 2048000
+        assert source["total_chunk_count"] == 1
+
+    def test_custom_privacy_level(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_create_post_response()) as mock_post:
+            pub._create_post(1024, "cat vid", privacy_level="PUBLIC_TO_EVERYONE")
+
+        call_args = mock_post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert body["post_info"]["privacy_level"] == "PUBLIC_TO_EVERYONE"
+
+    def test_default_privacy_is_self_only(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_create_post_response()) as mock_post:
+            pub._create_post(1024, "cat vid")
+
+        call_args = mock_post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert body["post_info"]["privacy_level"] == "SELF_ONLY"
+
+
+class TestCreatePostErrors:
+    def test_raises_on_http_error(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = requests_lib.HTTPError(
+            "500 Server Error"
+        )
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=mock_resp):
+            with pytest.raises(RuntimeError, match="Create post request failed"):
+                pub._create_post(1024, "cat vid")
+
+    def test_raises_on_connection_error(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   side_effect=requests_lib.ConnectionError("Connection refused")):
+            with pytest.raises(RuntimeError, match="Create post request failed"):
+                pub._create_post(1024, "cat vid")
+
+    def test_raises_on_api_error_code(self):
+        resp = _mock_create_post_response(
+            error={"code": "invalid_param", "message": "Bad privacy_level"},
+        )
+        resp.json.return_value["data"] = {}
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="Bad privacy_level"):
+                pub._create_post(1024, "cat vid")
+
+    def test_raises_on_unaudited_client_error(self):
+        resp = _mock_create_post_response(
+            error={
+                "code": "unaudited_client_can_only_post_to_private_accounts",
+                "message": "Unaudited client can only post to private accounts",
+            },
+        )
+        resp.json.return_value["data"] = {}
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="Unaudited client"):
+                pub._create_post(1024, "cat vid", privacy_level="PUBLIC_TO_EVERYONE")
+
+    def test_raises_when_publish_id_missing(self):
+        resp = _mock_create_post_response()
+        resp.json.return_value["data"] = {"upload_url": "https://example.com"}
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="missing publish_id or upload_url"):
+                pub._create_post(1024, "cat vid")
+
+    def test_raises_when_upload_url_missing(self):
+        resp = _mock_create_post_response()
+        resp.json.return_value["data"] = {"publish_id": "pid_123"}
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="missing publish_id or upload_url"):
+                pub._create_post(1024, "cat vid")
+
+    def test_raises_on_empty_error_message_uses_code(self):
+        resp = _mock_create_post_response(
+            error={"code": "access_token_invalid", "message": ""},
+        )
+        resp.json.return_value["data"] = {}
+
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="access_token_invalid"):
+                pub._create_post(1024, "cat vid")

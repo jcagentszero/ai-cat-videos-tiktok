@@ -150,9 +150,65 @@ class TikTokPublisher:
         logger.info("Video uploaded successfully (file_size={})", file_size)
         return True
 
-    def _create_post(self, publish_id: str, caption: str) -> dict:
-        """Submit post creation. TODO: implement."""
-        raise NotImplementedError
+    def _create_post(self, file_size: int, caption: str,
+                     privacy_level: str = "SELF_ONLY") -> dict:
+        url = f"{self.BASE_URL}/post/publish/video/init/"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        }
+        body = {
+            "post_info": {
+                "title": caption,
+                "privacy_level": privacy_level,
+                "disable_duet": False,
+                "disable_comment": False,
+                "disable_stitch": False,
+                "is_aigc": True,
+            },
+            "source_info": {
+                "source": "FILE_UPLOAD",
+                "video_size": file_size,
+                "chunk_size": file_size,
+                "total_chunk_count": 1,
+            },
+        }
+
+        logger.debug(
+            "Creating TikTok post (caption_len={}, privacy={})",
+            len(caption), privacy_level,
+        )
+
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.error("Create post request failed: {}", exc)
+            raise RuntimeError(f"Create post request failed: {exc}") from exc
+
+        data = resp.json()
+
+        error = data.get("error", {})
+        if error.get("code") != "ok":
+            error_msg = error.get("message") or error.get("code", "unknown")
+            logger.error("TikTok create post failed: {}", error_msg)
+            raise RuntimeError(f"TikTok create post failed: {error_msg}")
+
+        result = data.get("data", {})
+        publish_id = result.get("publish_id")
+        upload_url = result.get("upload_url")
+
+        if not publish_id or not upload_url:
+            raise RuntimeError(
+                "TikTok create post response missing publish_id or upload_url"
+            )
+
+        logger.info(
+            "Post created (publish_id={}, privacy={})",
+            publish_id, privacy_level,
+        )
+
+        return result
 
     def _check_status(self, publish_id: str) -> dict:
         """Poll publish status until live or failed. TODO: implement."""
