@@ -95,6 +95,25 @@ class StorageManager:
     def cleanup_old_videos(self, keep_last: int = 30) -> None:
         """
         Delete old video files keeping the most recent `keep_last`.
-        TODO: implement
         """
-        raise NotImplementedError
+        videos = sorted(
+            settings.OUTPUT_DIR.glob("*.mp4"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+
+        to_delete = videos[keep_last:]
+        if not to_delete:
+            logger.debug("No old videos to clean up ({} total, keeping {})", len(videos), keep_last)
+            return
+
+        deleted = 0
+        for video in to_delete:
+            try:
+                video.unlink()
+                deleted += 1
+                logger.debug("Deleted old video: {}", video.name)
+            except OSError as exc:
+                logger.warning("Failed to delete {}: {}", video.name, exc)
+
+        logger.info("Cleanup complete: deleted {}/{} old videos", deleted, len(to_delete))

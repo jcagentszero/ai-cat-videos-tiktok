@@ -91,4 +91,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
 - [x] Implement DRY_RUN mode — skip publishing step, log what would have been posted <!-- files: pipeline/runner.py, config/settings.py -->
 - [x] Wire up main.py argument parsing and Pipeline invocation <!-- files: main.py -->
+- [x] Add cron job or APScheduler to run pipeline on POST_SCHEDULE_CRON schedule <!-- files: main.py -->
 <!-- Completed tasks moved here -->

@@ -13,7 +13,7 @@
 7. ~~**Pipeline.__init__** — wire generator + publisher + storage, DRY_RUN mode~~ ✅
 7b. ~~**Pipeline.run** — orchestrate generate → store → publish, with DRY_RUN skip~~ ✅
 8. ~~**Scheduling** — APScheduler daemon with `--schedule` flag~~ ✅
-8b. **Cleanup** — `StorageManager.cleanup_old_videos` to manage disk space
+8b. ~~**Cleanup** — `StorageManager.cleanup_old_videos` to manage disk space~~ ✅
 8c. **Daily digest** — run summary report of what was posted and any failures
 
 ## Discoveries
@@ -91,3 +91,4 @@
 - **DRY_RUN mode** — `pipeline/runner.py`, `main.py`: enhanced dry_run log to show video path, caption, and hashtags (what would have been posted); wired `main.py` `--dry-run` flag to override `settings.DRY_RUN`; connected pipeline invocation loop with `--count` and `--prompt` support; 1 new test in `tests/test_pipeline.py`, 5 tests in `tests/test_main.py`
 - **main.py argument parsing** — wired `--category` flag: selects random prompt from category via `get_prompt_by_category`, validates against `CATEGORY_MAP`, mutually exclusive with `--prompt`; removed stale TODO; 4 new tests in `tests/test_main.py` (9 total)
 - **Scheduling** — `scheduler/cron.py`: APScheduler 3.10.4 `BlockingScheduler` with `CronTrigger` parsed from `POST_SCHEDULE_CRON` (5-field); `_run_pipeline()` catches errors so scheduler survives failures; `--schedule` flag in `main.py` validates config then starts daemon; 15 tests in `tests/test_scheduler.py`
+- **Cleanup** — `StorageManager.cleanup_old_videos(keep_last=30)` in `storage/manager.py`: sorts `*.mp4` files in `OUTPUT_DIR` by mtime (newest first), deletes beyond `keep_last`; individual delete failures logged as warnings (doesn't abort remaining deletes); 8 tests in `tests/test_storage.py`

@@ -167,3 +167,83 @@ class TestGetRecentPrompts:
             result = storage.get_recent_prompts()
         assert len(result) == 10
         assert result[0] == "prompt 5"
+
+
+def _create_videos(output_dir, count, base_time=1000000):
+    """Helper to create mp4 files with distinct modification times."""
+    import os
+    paths = []
+    for i in range(count):
+        p = output_dir / f"video_{i:03d}.mp4"
+        p.write_bytes(b"\x00" * 100)
+        os.utime(p, (base_time + i, base_time + i))
+        paths.append(p)
+    return paths
+
+
+class TestCleanupOldVideos:
+    def test_deletes_oldest_videos(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        videos = _create_videos(output_dir, 5)
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=2)
+        remaining = list(output_dir.glob("*.mp4"))
+        assert len(remaining) == 2
+        assert videos[3] in remaining
+        assert videos[4] in remaining
+
+    def test_no_op_when_fewer_than_keep_last(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        _create_videos(output_dir, 3)
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=5)
+        assert len(list(output_dir.glob("*.mp4"))) == 3
+
+    def test_no_op_when_exactly_keep_last(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        _create_videos(output_dir, 3)
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=3)
+        assert len(list(output_dir.glob("*.mp4"))) == 3
+
+    def test_no_op_when_empty_directory(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=5)
+        assert len(list(output_dir.glob("*.mp4"))) == 0
+
+    def test_ignores_non_mp4_files(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        _create_videos(output_dir, 3)
+        (output_dir / "readme.txt").write_text("keep me")
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=1)
+        assert (output_dir / "readme.txt").exists()
+
+    def test_keeps_newest_by_mtime(self, storage, tmp_path):
+        import os
+        output_dir = tmp_path / "output"
+        old = output_dir / "old_video.mp4"
+        new = output_dir / "new_video.mp4"
+        old.write_bytes(b"\x00")
+        new.write_bytes(b"\x00")
+        os.utime(old, (1000, 1000))
+        os.utime(new, (9999, 9999))
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos(keep_last=1)
+        assert not old.exists()
+        assert new.exists()
+
+    def test_handles_delete_failure(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        videos = _create_videos(output_dir, 3)
+        with patch("config.settings.OUTPUT_DIR", output_dir), \
+             patch.object(type(videos[0]), "unlink", side_effect=OSError("permission denied")):
+            storage.cleanup_old_videos(keep_last=1)
+
+    def test_default_keep_last_is_30(self, storage, tmp_path):
+        output_dir = tmp_path / "output"
+        _create_videos(output_dir, 35)
+        with patch("config.settings.OUTPUT_DIR", output_dir):
+            storage.cleanup_old_videos()
+        assert len(list(output_dir.glob("*.mp4"))) == 30
