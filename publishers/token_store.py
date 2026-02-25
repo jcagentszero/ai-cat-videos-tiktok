@@ -10,6 +10,7 @@ tokens survive process restarts. Called by TikTokPublisher.refresh_token().
 import json
 from pathlib import Path
 from config import settings
+from utils.logger import logger
 
 
 def _token_path() -> Path:
@@ -22,12 +23,18 @@ def load_tokens() -> dict:
 
     Returns:
         dict with keys: access_token, refresh_token, expires_at (ISO string).
-        Returns empty dict if file doesn't exist.
+        Returns empty dict if file doesn't exist or is corrupt.
     """
     path = _token_path()
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    try:
+        data = json.loads(path.read_text())
+        logger.debug("Loaded tokens from {}", path)
+        return data
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read token file {}, returning empty: {}", path, exc)
+        return {}
 
 
 def save_tokens(access_token: str, refresh_token: str, expires_at: str,
@@ -50,4 +57,9 @@ def save_tokens(access_token: str, refresh_token: str, expires_at: str,
     }
     if open_id is not None:
         data["open_id"] = open_id
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    try:
+        path.write_text(json.dumps(data, indent=2) + "\n")
+        logger.info("Saved tokens to {}", path)
+    except OSError as exc:
+        logger.error("Failed to write tokens to {}: {}", path, exc)
+        raise
