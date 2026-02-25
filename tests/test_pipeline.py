@@ -104,12 +104,12 @@ class TestSelectPrompt:
 
     def test_excludes_recently_used_prompts(self, pipe):
         # Use all but one dramatic prompt as recent
-        pipe.storage.get_recent_prompts.return_value = DRAMATIC[:2]
+        pipe.storage.get_recent_prompts.return_value = DRAMATIC[:-1]
         wed = datetime(2026, 2, 25, 12, 0)
         with patch("pipeline.runner.datetime") as mock_dt:
             mock_dt.now.return_value = wed
             prompt = pipe._select_prompt()
-        assert prompt == DRAMATIC[2]
+        assert prompt == DRAMATIC[-1]
 
     def test_falls_back_to_all_prompts_when_category_exhausted(self, pipe):
         # All dramatic prompts used recently

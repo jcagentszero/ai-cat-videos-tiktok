@@ -93,4 +93,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Wire up main.py argument parsing and Pipeline invocation <!-- files: main.py -->
 - [x] Add cron job or APScheduler to run pipeline on POST_SCHEDULE_CRON schedule <!-- files: main.py -->
 - [x] Implement StorageManager.cleanup_old_videos — delete videos older than keep_last to manage disk space <!-- files: storage/manager.py -->
+- [x] Add run summary report (daily digest of what was posted, any failures) <!-- files: pipeline/runner.py, utils/logger.py -->
 <!-- Completed tasks moved here -->
