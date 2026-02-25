@@ -9,7 +9,7 @@
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
-6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, upload + post
+6. **TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, ~~init upload~~, chunk upload + post
 7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
@@ -43,6 +43,7 @@
 - **TikTok OAuth flow**: authorization URL is `https://www.tiktok.com/v2/auth/authorize/`, token exchange is `POST https://open.tiktokapis.com/v2/oauth/token/`; redirect URI must be registered in TikTok app settings (default: `http://localhost:8080/callback`); token exchange returns `access_token`, `refresh_token`, `open_id`, `expires_in`; `token_store.save_tokens` now accepts optional `open_id` kwarg
 - `PosixPath` attributes (`read_text`, `write_text`) are read-only in Python 3.14 — use `os.chmod` or filesystem-level techniques instead of `patch.object` for testing I/O errors
 - **TikTok token refresh**: same endpoint as exchange (`POST https://open.tiktokapis.com/v2/oauth/token/`) with `grant_type=refresh_token`; response shape matches initial exchange (`access_token`, `refresh_token`, `open_id`, `expires_in`); `TikTokPublisher.__init__` still raises `NotImplementedError` — use `object.__new__(TikTokPublisher)` to test `refresh_token` in isolation
+- **TikTok init upload**: `POST /v2/post/publish/video/init/` with `Authorization: Bearer {token}` header; body: `{"source_info": {"source": "FILE_UPLOAD", "video_size": N, "chunk_size": N, "total_chunk_count": N}}`; response wraps data in `{"data": {...}, "error": {"code": "ok", ...}}`; `upload_url` valid for 1 hour; rate limit: 6 req/min per user; direct post endpoint (not inbox) requires `video.publish` scope; error codes include `spam_risk_too_many_pending_share` (max 5 pending in 24h)
 
 ## Completed
 
@@ -62,3 +63,4 @@
 - **TikTok OAuth flow** — `publishers/oauth.py`: `build_auth_url(state)`, `exchange_code(code)`, `run_oauth_flow()` with local callback server, CSRF state validation, and token persistence; `--auth` flag in `main.py`; `token_store.save_tokens` extended with optional `open_id`; 23 tests in `tests/test_oauth.py`
 - **Token persistence** — `publishers/token_store.py`: `load_tokens()` and `save_tokens()` with JSON file read/write to `credentials/tiktok_tokens.json`; structured logging via loguru; corrupt-file recovery on load (returns `{}`); write-error propagation with logging; 12 tests in `tests/test_token_store.py`
 - **Token refresh** — `TikTokPublisher.refresh_token()` in `publishers/tiktok.py`: loads tokens from `token_store`, checks `expires_at` against 5-minute buffer (`REFRESH_BUFFER_SECONDS=300`), skips if still valid, POSTs to TikTok refresh endpoint with `grant_type=refresh_token`, persists new tokens via `token_store.save_tokens()`, preserves `open_id` from stored tokens if not in refresh response; 14 tests in `tests/test_tiktok.py`
+- **Init upload** — `TikTokPublisher._init_upload(file_size)` in `publishers/tiktok.py`: POSTs to `/v2/post/publish/video/init/` with `FILE_UPLOAD` source and single-chunk strategy (chunk_size=file_size), validates `error.code == "ok"` and presence of `publish_id`/`upload_url` in response, returns `data` dict; 10 tests in `tests/test_tiktok.py`

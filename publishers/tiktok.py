@@ -64,8 +64,52 @@ class TikTokPublisher:
         raise NotImplementedError
 
     def _init_upload(self, file_size: int) -> dict:
-        """Call TikTok init upload endpoint. TODO: implement."""
-        raise NotImplementedError
+        url = f"{self.BASE_URL}/post/publish/video/init/"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        }
+        body = {
+            "source_info": {
+                "source": "FILE_UPLOAD",
+                "video_size": file_size,
+                "chunk_size": file_size,
+                "total_chunk_count": 1,
+            },
+        }
+
+        logger.debug("Initializing TikTok upload (file_size={})", file_size)
+
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.error("Init upload request failed: {}", exc)
+            raise RuntimeError(f"Init upload request failed: {exc}") from exc
+
+        data = resp.json()
+
+        error = data.get("error", {})
+        if error.get("code") != "ok":
+            error_msg = error.get("message") or error.get("code", "unknown")
+            logger.error("TikTok init upload failed: {}", error_msg)
+            raise RuntimeError(f"TikTok init upload failed: {error_msg}")
+
+        result = data.get("data", {})
+        publish_id = result.get("publish_id")
+        upload_url = result.get("upload_url")
+
+        if not publish_id or not upload_url:
+            raise RuntimeError(
+                "TikTok init upload response missing publish_id or upload_url"
+            )
+
+        logger.info(
+            "Upload initialized (publish_id={}, file_size={})",
+            publish_id, file_size,
+        )
+
+        return result
 
     def _upload_video(self, upload_url: str, video_path: Path) -> bool:
         """PUT video bytes to TikTok upload URL. TODO: implement."""
