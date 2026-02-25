@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from pipeline.runner import Pipeline
@@ -212,6 +213,127 @@ class TestBuildCaption:
         caption, _ = pipe._build_caption(PLAYFUL[0])
         assert isinstance(caption, str)
         assert len(caption) > 0
+
+
+class TestPipelineRun:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        _, gen = mock_veo
+        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
+        _, pub = mock_tiktok
+        pub.publish.return_value = {
+            "publish_id": "pub123",
+            "status": "PUBLISH_COMPLETE",
+            "video_path": "/fake/output/video_20260224_001.mp4",
+        }
+        pipe = Pipeline(dry_run=False)
+        pipe.storage.get_recent_prompts.return_value = []
+        return pipe
+
+    @pytest.fixture
+    def dry_pipe(self, mock_veo, mock_tiktok, mock_storage):
+        _, gen = mock_veo
+        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
+        pipe = Pipeline(dry_run=True)
+        pipe.storage.get_recent_prompts.return_value = []
+        return pipe
+
+    def test_returns_dict(self, dry_pipe):
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            result = dry_pipe.run()
+        assert isinstance(result, dict)
+
+    def test_result_contains_required_keys(self, dry_pipe):
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            result = dry_pipe.run()
+        for key in ("prompt", "video_path", "caption", "hashtags",
+                    "publish_result", "status"):
+            assert key in result
+
+    def test_uses_provided_prompt(self, dry_pipe):
+        result = dry_pipe.run(prompt="A custom cat prompt")
+        assert result["prompt"] == "A custom cat prompt"
+
+    def test_selects_prompt_when_none_given(self, dry_pipe):
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            result = dry_pipe.run()
+        assert result["prompt"] in DRAMATIC
+
+    def test_calls_generator(self, dry_pipe):
+        dry_pipe.run(prompt="A cat on a couch")
+        dry_pipe.generator.generate.assert_called_once_with("A cat on a couch")
+
+    def test_video_path_in_result(self, dry_pipe):
+        result = dry_pipe.run(prompt="A cat on a couch")
+        assert result["video_path"] == "/fake/output/video_20260224_001.mp4"
+
+    def test_dry_run_skips_publish(self, dry_pipe):
+        result = dry_pipe.run(prompt="A cat on a couch")
+        assert result["status"] == "dry_run"
+        assert result["publish_result"] is None
+
+    def test_publishes_when_not_dry_run(self, pipe):
+        result = pipe.run(prompt="A cat on a couch")
+        assert result["status"] == "published"
+        pipe.publisher.publish.assert_called_once()
+
+    def test_publish_receives_caption_and_hashtags(self, pipe):
+        pipe.run(prompt="A cat on a couch")
+        args = pipe.publisher.publish.call_args
+        assert args[0][0] == Path("/fake/output/video_20260224_001.mp4")
+        assert isinstance(args[0][1], str)   # caption
+        assert isinstance(args[0][2], list)  # hashtags
+
+    def test_publish_result_in_output(self, pipe):
+        result = pipe.run(prompt="A cat on a couch")
+        assert result["publish_result"]["publish_id"] == "pub123"
+
+    def test_saves_run_record(self, dry_pipe):
+        dry_pipe.run(prompt="A cat on a couch")
+        dry_pipe.storage.save_run.assert_called_once()
+        args = dry_pipe.storage.save_run.call_args[0]
+        assert args[0] == "A cat on a couch"
+        assert args[1] == Path("/fake/output/video_20260224_001.mp4")
+        assert isinstance(args[2], dict)
+
+    def test_generate_error_calls_handle_error_and_raises(self, dry_pipe):
+        dry_pipe.generator.generate.side_effect = RuntimeError("veo down")
+        with patch.object(dry_pipe, "_handle_error") as mock_handle:
+            with pytest.raises(RuntimeError, match="veo down"):
+                dry_pipe.run(prompt="A cat on a couch")
+        mock_handle.assert_called_once()
+        assert mock_handle.call_args[0][0] == "generate"
+
+    def test_publish_error_calls_handle_error_and_raises(self, pipe):
+        pipe.publisher.publish.side_effect = RuntimeError("upload failed")
+        with patch.object(pipe, "_handle_error") as mock_handle:
+            with pytest.raises(RuntimeError, match="upload failed"):
+                pipe.run(prompt="A cat on a couch")
+        mock_handle.assert_called_once()
+        assert mock_handle.call_args[0][0] == "publish"
+
+    def test_save_run_error_calls_handle_error_and_raises(self, dry_pipe):
+        dry_pipe.storage.save_run.side_effect = OSError("disk full")
+        with patch.object(dry_pipe, "_handle_error") as mock_handle:
+            with pytest.raises(OSError, match="disk full"):
+                dry_pipe.run(prompt="A cat on a couch")
+        mock_handle.assert_called_once()
+        assert mock_handle.call_args[0][0] == "save_run"
+
+    def test_caption_in_result(self, dry_pipe):
+        result = dry_pipe.run(prompt="A fluffy cat, sitting on a ledge")
+        assert result["caption"] == "A fluffy cat"
+
+    def test_hashtags_in_result(self, dry_pipe):
+        result = dry_pipe.run(prompt="A cat on a couch")
+        assert isinstance(result["hashtags"], list)
+        assert len(result["hashtags"]) > 0
 
 
 class TestHandleError:

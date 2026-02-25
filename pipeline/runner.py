@@ -63,11 +63,65 @@ class Pipeline:
             prompt: Override prompt. If None, uses scheduled selector.
 
         Returns:
-            Result dict: {prompt, video_path, publish_id, share_url, status}
-
-        TODO: implement
+            Result dict: {prompt, video_path, caption, hashtags,
+                          publish_result, status}
         """
-        raise NotImplementedError
+        # 1. Select prompt
+        try:
+            if prompt is None:
+                prompt = self._select_prompt()
+            logger.info("Pipeline run started with prompt: {!r}", prompt[:80])
+        except Exception as e:
+            self._handle_error("select_prompt", e)
+            raise
+
+        # 2. Generate video
+        try:
+            video_path = self.generator.generate(prompt)
+            logger.info("Video generated: {}", video_path)
+        except Exception as e:
+            self._handle_error("generate", e)
+            raise
+
+        # 3. Build caption and hashtags
+        try:
+            caption, hashtags = self._build_caption(prompt)
+        except Exception as e:
+            self._handle_error("build_caption", e)
+            raise
+
+        # 4. Publish (skip if dry_run)
+        publish_result = None
+        if self.dry_run:
+            logger.info("DRY_RUN: skipping publish for {}", video_path)
+            status = "dry_run"
+        else:
+            try:
+                publish_result = self.publisher.publish(
+                    video_path, caption, hashtags,
+                )
+                status = "published"
+            except Exception as e:
+                self._handle_error("publish", e)
+                raise
+
+        # 5. Save run record
+        result = {
+            "prompt": prompt,
+            "video_path": str(video_path),
+            "caption": caption,
+            "hashtags": hashtags,
+            "publish_result": publish_result,
+            "status": status,
+        }
+        try:
+            self.storage.save_run(prompt, video_path, result)
+        except Exception as e:
+            self._handle_error("save_run", e)
+            raise
+
+        logger.info("Pipeline run complete (status={})", status)
+        return result
 
     def _select_prompt(self) -> str:
         recent = set(self.storage.get_recent_prompts())

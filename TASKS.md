@@ -32,8 +32,8 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 - [x] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
 - [x] Implement Pipeline._build_caption — generate caption text and hashtag list from prompt <!-- files: pipeline/runner.py -->
-- [ ] Implement Pipeline._handle_error — structured error logging with optional email notification <!-- files: pipeline/runner.py, utils/logger.py -->
-- [ ] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
+
+- [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
 - [ ] Implement DRY_RUN mode — skip publishing step, log what would have been posted <!-- files: pipeline/runner.py, config/settings.py -->
 - [ ] Wire up main.py argument parsing and Pipeline invocation <!-- files: main.py -->
 
@@ -86,4 +86,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement Pipeline.__init__ — wire up generator, publisher, storage instances <!-- files: pipeline/runner.py -->
 - [x] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
 - [x] Implement Pipeline._build_caption — generate caption text and hashtag list from prompt <!-- files: pipeline/runner.py -->
+- [x] Implement Pipeline._handle_error — structured error logging with optional email notification <!-- files: pipeline/runner.py, utils/logger.py -->
+- [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
 <!-- Completed tasks moved here -->

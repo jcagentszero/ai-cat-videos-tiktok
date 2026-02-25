@@ -11,7 +11,7 @@
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
 6. ~~**TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, ~~init upload~~, ~~chunk upload~~, ~~post~~, ~~status check~~, ~~publish (e2e)~~~ ✅
 7. ~~**Pipeline.__init__** — wire generator + publisher + storage, DRY_RUN mode~~ ✅
-7b. **Pipeline.run** — orchestrate generate → store → publish, with DRY_RUN skip
+7b. ~~**Pipeline.run** — orchestrate generate → store → publish, with DRY_RUN skip~~ ✅
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
 ## Discoveries
@@ -51,6 +51,7 @@
 - **TikTok publish e2e**: `publish()` refreshes token first (updates `self.access_token`), validates file exists and is non-empty, formats hashtags into caption (strips leading `#` to avoid `##`), then calls `_create_post` → `_upload_video` → `_check_status`; returns `{"publish_id", "status", "video_path"}`
 - **Pipeline.__init__**: `TikTokPublisher.__init__` `NotImplementedError` removed — it now loads `access_token` and `open_id` from settings (these get overwritten by `refresh_token()` in `publish()`); existing tests using `object.__new__` still work since they bypass `__init__` entirely; `Pipeline(dry_run=True)` sets `self.publisher = None` to skip TikTok init when credentials unavailable
 - **Loguru mock testing**: loguru uses `{}` format placeholders — when mocking `logger`, assert on positional args `call_args[0][1:]` for interpolated values, not `call_args[0][0]` (which is the raw template string)
+- **Pipeline.run**: `_select_prompt` uses `datetime.now()` internally — tests that call `run()` without a prompt override must patch `pipeline.runner.datetime`; providing `prompt=` arg bypasses this entirely. Error handling delegates to `_handle_error` then re-raises so callers get the original exception. `save_run` receives the full result dict (including `publish_result`) as the third arg.
 - **Pipeline._select_prompt**: uses `DAY_SCHEDULE` (weekday → category) and `CATEGORY_MAP` (category → prompt list) from `cat_prompts.py`; deduplicates against `storage.get_recent_prompts()` (default last 10); three-tier fallback: 1) scheduled category minus recent, 2) all prompts minus recent, 3) reuse from scheduled category; `CATEGORY_MAP` and `DAY_SCHEDULE` extracted as module-level constants in `cat_prompts.py` (previously local vars inside functions)
 - **Pipeline._build_caption**: extracts first comma-delimited clause of prompt as caption text (subject description without camera/lighting/audio directions); hashtags built from `BASE_HASHTAGS` (always included) + `CATEGORY_HASHTAGS` (added when prompt found in `CATEGORY_MAP`); hashtags are bare strings (no `#` prefix) — `TikTokPublisher.publish()` prepends `#` when formatting; unknown prompts (not in any category) get only base hashtags; 9 tests in `tests/test_pipeline.py`
 
@@ -82,3 +83,4 @@
 - **Pipeline._select_prompt** — `pipeline/runner.py`: scheduled category selection via `DAY_SCHEDULE` with three-tier dedup fallback (category → all → reuse); `CATEGORY_MAP` and `DAY_SCHEDULE` extracted as module-level constants in `prompts/cat_prompts.py`; 8 tests in `tests/test_pipeline.py`
 - **Pipeline._build_caption** — `pipeline/runner.py`: extracts first comma-clause as caption, adds base + category-specific hashtags; 9 tests in `tests/test_pipeline.py`
 - **Pipeline._handle_error** — `pipeline/runner.py`: structured error logging (step, error type, message) with debug-level traceback; optional email notification via `NOTIFY_EMAIL` env var using localhost SMTP; email failures swallowed with warning log; `NOTIFY_EMAIL` added to `config/settings.py`; 8 tests in `tests/test_pipeline.py`
+- **Pipeline.run** — `pipeline/runner.py`: end-to-end orchestrator: select prompt (or use override) → generate video → build caption/hashtags → publish (skip if dry_run) → save run record; each step wrapped in try/except with `_handle_error` + re-raise; returns dict with `prompt`, `video_path`, `caption`, `hashtags`, `publish_result`, `status`; 16 tests in `tests/test_pipeline.py`
