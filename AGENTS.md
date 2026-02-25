@@ -52,3 +52,4 @@ python -m pytest tests/ -v
 - `validate_config(dry_run=True)` skips TikTok var checks — use when testing GCP-only flows
 - Use `.venv/bin/python` to run lint/tests (system python lacks project deps)
 - Veo 3 SDK is `google-genai` (not `google-cloud-aiplatform`); model ID is `veo-3.0-generate-001`
+- Smoke tests (`pytest -m smoke`) hit real APIs and require GCP credentials; unit tests auto-skip them
