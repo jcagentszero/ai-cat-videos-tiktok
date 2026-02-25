@@ -22,7 +22,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 3 — TikTok Publishing
 
-- [ ] Create TikTok Developer account and app at developers.tiktok.com, obtain client key/secret <!-- files: .env.example -->
 - [ ] Implement OAuth 2.0 authorization code flow to get initial access + refresh tokens <!-- files: publishers/tiktok.py -->
 - [ ] Implement token_store.py — JSON file read/write for OAuth token persistence <!-- files: publishers/token_store.py -->
 - [ ] Implement TikTokPublisher.refresh_token — auto-refresh before expiry, persist via token_store <!-- files: publishers/tiktok.py, publishers/token_store.py -->
@@ -81,4 +80,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement VeoGenerator.generate — full end-to-end: submit prompt, poll, download, return path <!-- files: generators/veo.py -->
 - [x] Add retry logic to Veo generation (tenacity) for transient API errors <!-- files: generators/veo.py -->
 - [x] Write smoke test: generate one video, confirm file exists and is valid MP4 <!-- files: generators/veo.py -->
+- [x] Create TikTok Developer account and app at developers.tiktok.com, obtain client key/secret <!-- files: .env.example -->
 <!-- Completed tasks moved here -->

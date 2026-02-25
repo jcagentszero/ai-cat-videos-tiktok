@@ -30,7 +30,8 @@ def load_tokens() -> dict:
     return json.loads(path.read_text())
 
 
-def save_tokens(access_token: str, refresh_token: str, expires_at: str) -> None:
+def save_tokens(access_token: str, refresh_token: str, expires_at: str,
+                *, open_id: str = None) -> None:
     """
     Persist tokens to disk.
 
@@ -38,6 +39,7 @@ def save_tokens(access_token: str, refresh_token: str, expires_at: str) -> None:
         access_token:  Current OAuth access token.
         refresh_token: Current OAuth refresh token.
         expires_at:    ISO-8601 timestamp when access_token expires.
+        open_id:       TikTok user ID (optional, saved if provided).
     """
     path = _token_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,4 +48,6 @@ def save_tokens(access_token: str, refresh_token: str, expires_at: str) -> None:
         "refresh_token": refresh_token,
         "expires_at": expires_at,
     }
+    if open_id is not None:
+        data["open_id"] = open_id
     path.write_text(json.dumps(data, indent=2) + "\n")

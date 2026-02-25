@@ -24,12 +24,22 @@ def parse_args():
     parser.add_argument("--prompt",   type=str,  default=None, help="Override generation prompt")
     parser.add_argument("--category", type=str,  default=None, help="Prompt category: cozy|playful|dramatic|funny|cute")
     parser.add_argument("--dry-run",  action="store_true",      help="Generate video but skip posting")
+    parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if args.auth:
+        from publishers.oauth import run_oauth_flow
+        try:
+            run_oauth_flow()
+        except Exception as e:
+            logger.error("OAuth flow failed: {}", e)
+            sys.exit(1)
+        return
 
     try:
         validate_config(dry_run=args.dry_run)

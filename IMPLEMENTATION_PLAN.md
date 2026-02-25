@@ -9,7 +9,7 @@
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
-6. **TikTok publishing** — OAuth flow, token persistence, upload + post
+6. **TikTok publishing** — ~~OAuth flow~~, token persistence, upload + post
 7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
@@ -40,6 +40,7 @@
 - Smoke tests use `pytest.mark.smoke` + `skipif` on credential env vars; run with `pytest -m smoke` to target only integration tests
 - `_api_retry` decorator retries `ConnectionError` and Google API 429/5xx exceptions (3 attempts, exponential backoff 2-30s); non-transient errors propagate immediately
 - **TikTok Developer App setup**: requires manual registration at developers.tiktok.com; Content Posting API needs `video.upload` + `video.publish` scopes; new apps start in sandbox mode; app review required for public posting; OAuth redirect URI needed for token flow
+- **TikTok OAuth flow**: authorization URL is `https://www.tiktok.com/v2/auth/authorize/`, token exchange is `POST https://open.tiktokapis.com/v2/oauth/token/`; redirect URI must be registered in TikTok app settings (default: `http://localhost:8080/callback`); token exchange returns `access_token`, `refresh_token`, `open_id`, `expires_in`; `token_store.save_tokens` now accepts optional `open_id` kwarg
 
 ## Completed
 
@@ -56,3 +57,4 @@
 - **VeoGenerator.generate** — end-to-end: submits prompt to Veo 3 with 9:16 aspect ratio and audio, polls for completion, downloads to `settings.OUTPUT_DIR/video_YYYYMMDD_HHMMSS.mp4`, 6 tests in `tests/test_veo.py`
 - **Veo retry logic** — tenacity `@_api_retry` on `_submit_job`, `_poll_once`, `_download_video` for transient API errors (ConnectionError, 429, 5xx); 3 attempts with exponential backoff (2-30s); 4 tests in `tests/test_veo.py`
 - **Veo smoke test** — end-to-end integration test that calls real Veo API, validates output exists and has valid MP4 ftyp header; auto-skips when GCP credentials unavailable; `pytest.mark.smoke` marker; 1 test in `tests/test_veo_smoke.py`
+- **TikTok OAuth flow** — `publishers/oauth.py`: `build_auth_url(state)`, `exchange_code(code)`, `run_oauth_flow()` with local callback server, CSRF state validation, and token persistence; `--auth` flag in `main.py`; `token_store.save_tokens` extended with optional `open_id`; 23 tests in `tests/test_oauth.py`
