@@ -962,3 +962,231 @@ class TestCheckStatusErrors:
                    side_effect=[0, 0]):
             with pytest.raises(RuntimeError, match="Rate limit exceeded"):
                 pub._check_status("pid_rate")
+
+
+# ── publish tests ────────────────────────────────────────────────────────────
+
+
+class TestPublishSuccess:
+    def test_end_to_end_publish(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 2048)
+
+        pub = _make_publisher_with_token()
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("PUBLISH_COMPLETE")
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]), \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            result = pub.publish(video, "cute cat", ["cats", "funny"])
+
+        assert result["publish_id"] == "v_pub~v2.987654321"
+        assert result["status"] == "PUBLISH_COMPLETE"
+        assert result["video_path"] == str(video)
+
+    def test_formats_hashtags_into_caption(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("PUBLISH_COMPLETE")
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]) as mock_post, \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub.publish(video, "cute cat", ["cats", "funny"])
+
+        create_call = mock_post.call_args_list[0]
+        body = create_call.kwargs.get("json") or create_call[1].get("json")
+        assert body["post_info"]["title"] == "cute cat #cats #funny"
+
+    def test_strips_leading_hash_from_hashtags(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("PUBLISH_COMPLETE")
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]) as mock_post, \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub.publish(video, "meow", ["#cats", "kittens"])
+
+        create_call = mock_post.call_args_list[0]
+        body = create_call.kwargs.get("json") or create_call[1].get("json")
+        assert body["post_info"]["title"] == "meow #cats #kittens"
+
+    def test_empty_hashtags_uses_caption_only(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("PUBLISH_COMPLETE")
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]) as mock_post, \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub.publish(video, "just a cat", [])
+
+        create_call = mock_post.call_args_list[0]
+        body = create_call.kwargs.get("json") or create_call[1].get("json")
+        assert body["post_info"]["title"] == "just a cat"
+
+    def test_refreshes_token_before_publishing(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token("old_token")
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("PUBLISH_COMPLETE")
+
+        with patch.object(pub, "refresh_token",
+                          return_value="new_token") as mock_refresh, \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]), \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            pub.publish(video, "cat", ["meow"])
+
+        mock_refresh.assert_called_once()
+        assert pub.access_token == "new_token"
+
+    def test_handles_send_to_inbox_status(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_resp = _mock_create_post_response()
+        upload_resp = _mock_upload_response(201)
+        status_resp = _mock_status_response("SEND_TO_USER_INBOX")
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch("publishers.tiktok.requests.post",
+                   side_effect=[create_resp, status_resp]), \
+             patch("publishers.tiktok.requests.put",
+                   return_value=upload_resp), \
+             patch("publishers.tiktok.time.monotonic",
+                   side_effect=[0, 0]):
+            result = pub.publish(video, "cat", [])
+
+        assert result["status"] == "SEND_TO_USER_INBOX"
+
+
+class TestPublishErrors:
+    def test_raises_on_missing_video_file(self, tmp_path):
+        missing = tmp_path / "nonexistent.mp4"
+
+        pub = _make_publisher_with_token()
+        with patch.object(pub, "refresh_token", return_value="at_fresh"):
+            with pytest.raises(FileNotFoundError, match="Video file not found"):
+                pub.publish(missing, "cat", [])
+
+    def test_raises_on_empty_video_file(self, tmp_path):
+        video = tmp_path / "empty.mp4"
+        video.write_bytes(b"")
+
+        pub = _make_publisher_with_token()
+        with patch.object(pub, "refresh_token", return_value="at_fresh"):
+            with pytest.raises(ValueError, match="Video file is empty"):
+                pub.publish(video, "cat", [])
+
+    def test_raises_on_create_post_failure(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post",
+                          side_effect=RuntimeError("Create post request failed")):
+            with pytest.raises(RuntimeError, match="Create post request failed"):
+                pub.publish(video, "cat", [])
+
+    def test_raises_on_upload_failure(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_data = {
+            "publish_id": "pid_123",
+            "upload_url": "https://example.com/upload",
+        }
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post", return_value=create_data), \
+             patch.object(pub, "_upload_video",
+                          side_effect=RuntimeError("Upload request failed")):
+            with pytest.raises(RuntimeError, match="Upload request failed"):
+                pub.publish(video, "cat", [])
+
+    def test_raises_on_status_check_failure(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_data = {
+            "publish_id": "pid_123",
+            "upload_url": "https://example.com/upload",
+        }
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post", return_value=create_data), \
+             patch.object(pub, "_upload_video", return_value=True), \
+             patch.object(pub, "_check_status",
+                          side_effect=RuntimeError("TikTok publish failed")):
+            with pytest.raises(RuntimeError, match="TikTok publish failed"):
+                pub.publish(video, "cat", [])
+
+    def test_raises_on_status_check_timeout(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_data = {
+            "publish_id": "pid_123",
+            "upload_url": "https://example.com/upload",
+        }
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post", return_value=create_data), \
+             patch.object(pub, "_upload_video", return_value=True), \
+             patch.object(pub, "_check_status",
+                          side_effect=TimeoutError("timed out")):
+            with pytest.raises(TimeoutError, match="timed out"):
+                pub.publish(video, "cat", [])
+
+    def test_raises_on_refresh_token_failure(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        with patch.object(pub, "refresh_token",
+                          side_effect=RuntimeError("No refresh token")):
+            with pytest.raises(RuntimeError, match="No refresh token"):
+                pub.publish(video, "cat", [])

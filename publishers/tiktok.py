@@ -44,25 +44,59 @@ class TikTokPublisher:
         raise NotImplementedError
 
     def publish(self, video_path: Path, caption: str, hashtags: list[str]) -> dict:
-        """
-        Upload and publish a video to TikTok.
+        logger.info("Publishing video to TikTok: {}", video_path)
 
-        Args:
-            video_path: Local path to the video file.
-            caption:    Post caption text.
-            hashtags:   List of hashtag strings (without #).
+        self.access_token = self.refresh_token()
 
-        Returns:
-            dict with publish_id, share_url, status.
+        if not video_path.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
 
-        TODO:
-          1. Initialize upload (POST /video/init/)
-          2. Upload video chunks (PUT to upload_url)
-          3. Create post (POST /video/publish/)
-          4. Poll for publish status
-          5. Return result
-        """
-        raise NotImplementedError
+        file_size = video_path.stat().st_size
+        if file_size == 0:
+            raise ValueError(f"Video file is empty: {video_path}")
+
+        if hashtags:
+            tag_str = " ".join(f"#{tag.lstrip('#')}" for tag in hashtags)
+            full_caption = f"{caption} {tag_str}"
+        else:
+            full_caption = caption
+
+        try:
+            post_data = self._create_post(file_size, full_caption)
+        except RuntimeError:
+            logger.error("Failed to create TikTok post for {}", video_path)
+            raise
+
+        publish_id = post_data["publish_id"]
+        upload_url = post_data["upload_url"]
+
+        try:
+            self._upload_video(upload_url, video_path)
+        except RuntimeError:
+            logger.error(
+                "Failed to upload video {} (publish_id={})",
+                video_path, publish_id,
+            )
+            raise
+
+        try:
+            status_result = self._check_status(publish_id)
+        except (RuntimeError, TimeoutError):
+            logger.error(
+                "Publish status check failed (publish_id={})", publish_id,
+            )
+            raise
+
+        logger.info(
+            "Video published successfully (publish_id={}, status={})",
+            publish_id, status_result.get("status"),
+        )
+
+        return {
+            "publish_id": publish_id,
+            "status": status_result.get("status"),
+            "video_path": str(video_path),
+        }
 
     def _init_upload(self, file_size: int) -> dict:
         url = f"{self.BASE_URL}/post/publish/video/init/"
