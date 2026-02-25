@@ -92,13 +92,32 @@ class Pipeline:
                        category_name)
         return prompt
 
+    BASE_HASHTAGS = ["catvideos", "catsoftiktok", "aiart", "aigenerated"]
+
+    CATEGORY_HASHTAGS = {
+        "cozy": ["cozycat", "sleepycat", "catlover"],
+        "playful": ["playfulcat", "kitten", "catplay"],
+        "dramatic": ["cinematic", "catmood", "aesthetic"],
+        "funny": ["funnycat", "catmemes", "catsbeingcats"],
+        "cute": ["cutecat", "kittenlife", "adorable"],
+    }
+
     def _build_caption(self, prompt: str) -> tuple[str, list[str]]:
-        """
-        Generate a TikTok caption and hashtag list from the prompt.
-        Returns (caption_text, [hashtags]).
-        TODO: implement — consider LLM-generated captions
-        """
-        raise NotImplementedError
+        caption = prompt.split(",")[0].strip()
+
+        category = None
+        for name, prompts in CATEGORY_MAP.items():
+            if prompt in prompts:
+                category = name
+                break
+
+        hashtags = list(self.BASE_HASHTAGS)
+        if category:
+            hashtags.extend(self.CATEGORY_HASHTAGS.get(category, []))
+
+        logger.info("Built caption ({} chars, {} hashtags, category={})",
+                    len(caption), len(hashtags), category or "unknown")
+        return caption, hashtags
 
     def _handle_error(self, step: str, error: Exception) -> None:
         """Log error, send notification if configured. TODO: implement."""

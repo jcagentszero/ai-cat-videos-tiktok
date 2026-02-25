@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import patch, MagicMock
 
 from pipeline.runner import Pipeline
-from prompts.cat_prompts import ALL_PROMPTS, COZY, DRAMATIC, PLAYFUL
+from prompts.cat_prompts import ALL_PROMPTS, COZY, DRAMATIC, FUNNY, PLAYFUL
 
 
 @pytest.fixture
@@ -160,3 +160,55 @@ class TestSelectPrompt:
             result = pipe._select_prompt()
         assert isinstance(result, str)
         assert len(result) > 0
+
+
+class TestBuildCaption:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        return Pipeline(dry_run=True)
+
+    def test_caption_is_first_clause_of_prompt(self, pipe):
+        prompt = COZY[0]
+        caption, _ = pipe._build_caption(prompt)
+        expected = prompt.split(",")[0].strip()
+        assert caption == expected
+
+    def test_returns_hashtag_list(self, pipe):
+        caption, hashtags = pipe._build_caption(COZY[0])
+        assert isinstance(hashtags, list)
+        assert len(hashtags) > 0
+        assert all(isinstance(h, str) for h in hashtags)
+
+    def test_base_hashtags_always_present(self, pipe):
+        _, hashtags = pipe._build_caption(COZY[0])
+        for tag in Pipeline.BASE_HASHTAGS:
+            assert tag in hashtags
+
+    def test_cozy_prompt_gets_cozy_hashtags(self, pipe):
+        _, hashtags = pipe._build_caption(COZY[0])
+        for tag in Pipeline.CATEGORY_HASHTAGS["cozy"]:
+            assert tag in hashtags
+
+    def test_funny_prompt_gets_funny_hashtags(self, pipe):
+        _, hashtags = pipe._build_caption(FUNNY[0])
+        for tag in Pipeline.CATEGORY_HASHTAGS["funny"]:
+            assert tag in hashtags
+
+    def test_unknown_prompt_gets_only_base_hashtags(self, pipe):
+        _, hashtags = pipe._build_caption("A totally custom prompt, not in any list")
+        assert hashtags == list(Pipeline.BASE_HASHTAGS)
+
+    def test_hashtags_do_not_contain_hash_symbol(self, pipe):
+        _, hashtags = pipe._build_caption(COZY[0])
+        for tag in hashtags:
+            assert not tag.startswith("#")
+
+    def test_returns_tuple(self, pipe):
+        result = pipe._build_caption(DRAMATIC[0])
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_caption_is_nonempty_string(self, pipe):
+        caption, _ = pipe._build_caption(PLAYFUL[0])
+        assert isinstance(caption, str)
+        assert len(caption) > 0
