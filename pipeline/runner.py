@@ -11,8 +11,11 @@ Usage:
 TODO: implement
 """
 
-from pathlib import Path
 from config import settings
+from generators.veo import VeoGenerator
+from publishers.tiktok import TikTokPublisher
+from storage.manager import StorageManager
+from utils.logger import logger
 
 
 class Pipeline:
@@ -31,9 +34,19 @@ class Pipeline:
     TODO: implement each step
     """
 
-    def __init__(self):
-        # TODO: initialize generator, publisher, storage
-        raise NotImplementedError
+    def __init__(self, dry_run=None):
+        self.dry_run = dry_run if dry_run is not None else settings.DRY_RUN
+
+        try:
+            self.storage = StorageManager()
+            self.generator = VeoGenerator()
+            self.publisher = None if self.dry_run else TikTokPublisher()
+            logger.info(
+                "Pipeline initialized (dry_run={})", self.dry_run,
+            )
+        except Exception as e:
+            logger.error("Failed to initialize Pipeline: {}", e)
+            raise
 
     def run(self, prompt: str | None = None) -> dict:
         """

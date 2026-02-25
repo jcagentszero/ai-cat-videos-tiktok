@@ -10,7 +10,8 @@
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
 5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
 6. ~~**TikTok publishing** — ~~OAuth flow~~, ~~token persistence~~, ~~token refresh~~, ~~init upload~~, ~~chunk upload~~, ~~post~~, ~~status check~~, ~~publish (e2e)~~~ ✅
-7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
+7. ~~**Pipeline.__init__** — wire generator + publisher + storage, DRY_RUN mode~~ ✅
+7b. **Pipeline.run** — orchestrate generate → store → publish, with DRY_RUN skip
 8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
 ## Discoveries
@@ -47,7 +48,8 @@
 - **TikTok chunk upload**: `PUT {upload_url}` with `Content-Type: video/mp4`, `Content-Length`, `Content-Range: bytes 0-{size-1}/{size}`; single-chunk strategy sends entire file; response 201=complete, 206=partial (multi-chunk), 403=URL expired, 416=range mismatch; upload URL valid for 1 hour; 300s timeout recommended for large files
 - **TikTok status check**: `POST /v2/post/publish/status/fetch/` with `{"publish_id": "..."}` body; terminal statuses: `PUBLISH_COMPLETE`, `SEND_TO_USER_INBOX`, `FAILED` (with `fail_reason`); non-terminal: `PROCESSING_UPLOAD`, `PROCESSING_DOWNLOAD`; rate limit 30 req/min per user; polling uses exponential backoff (5s initial, 1.5x factor, 15s cap) with 120s default timeout
 - **TikTok create post**: TikTok API has NO separate "publish" endpoint — `post_info` must be included in the same `/v2/post/publish/video/init/` call alongside `source_info`; `_create_post` signature changed from `(publish_id, caption)` to `(file_size, caption, privacy_level)` since init returns `publish_id` rather than accepting it; `_init_upload` remains for upload-only (inbox) scenarios; `_create_post` handles direct posting with `post_info` (title, privacy_level, disable_duet/comment/stitch, is_aigc=True); default privacy is `SELF_ONLY` (required for unaudited apps); valid levels: `PUBLIC_TO_EVERYONE`, `MUTUAL_FOLLOW_FRIENDS`, `FOLLOWER_OF_CREATOR`, `SELF_ONLY`; `publish()` flow should use `_create_post` (not `_init_upload`) → `_upload_video` → `_check_status`
-- **TikTok publish e2e**: `publish()` refreshes token first (updates `self.access_token`), validates file exists and is non-empty, formats hashtags into caption (strips leading `#` to avoid `##`), then calls `_create_post` → `_upload_video` → `_check_status`; returns `{"publish_id", "status", "video_path"}`; `__init__` still raises `NotImplementedError` — pipeline should construct via `object.__new__` or implement `__init__` when wiring
+- **TikTok publish e2e**: `publish()` refreshes token first (updates `self.access_token`), validates file exists and is non-empty, formats hashtags into caption (strips leading `#` to avoid `##`), then calls `_create_post` → `_upload_video` → `_check_status`; returns `{"publish_id", "status", "video_path"}`
+- **Pipeline.__init__**: `TikTokPublisher.__init__` `NotImplementedError` removed — it now loads `access_token` and `open_id` from settings (these get overwritten by `refresh_token()` in `publish()`); existing tests using `object.__new__` still work since they bypass `__init__` entirely; `Pipeline(dry_run=True)` sets `self.publisher = None` to skip TikTok init when credentials unavailable
 
 ## Completed
 
@@ -73,3 +75,4 @@
 - **Status check** — `TikTokPublisher._check_status(publish_id, timeout=120)` in `publishers/tiktok.py`: POSTs to `/v2/post/publish/status/fetch/` with exponential backoff polling (5s initial, 1.5x factor, 15s cap); returns result dict on `PUBLISH_COMPLETE` or `SEND_TO_USER_INBOX`; raises `RuntimeError` on `FAILED` (with `fail_reason`); raises `TimeoutError` on timeout; validates `error.code == "ok"` for API errors; 13 tests in `tests/test_tiktok.py`
 - **Publish (e2e)** — `TikTokPublisher.publish(video_path, caption, hashtags)` in `publishers/tiktok.py`: refreshes token, validates file, formats hashtags into caption, orchestrates `_create_post` → `_upload_video` → `_check_status`; returns dict with `publish_id`, `status`, `video_path`; 13 tests in `tests/test_tiktok.py`
 - **TikTok smoke test** — `tests/test_tiktok_smoke.py`: generates 1s test video via ffmpeg, uploads to TikTok with `SELF_ONLY` privacy via `publish()`, asserts terminal status; auto-skips when credentials or ffmpeg unavailable; `pytest.mark.smoke` marker; 1 test
+- **Pipeline.__init__** — `pipeline/runner.py`: accepts optional `dry_run` param (defaults to `settings.DRY_RUN`), creates `StorageManager`, `VeoGenerator`, and conditionally `TikTokPublisher` (None when dry_run); `TikTokPublisher.__init__` updated to remove `NotImplementedError`; 11 tests in `tests/test_pipeline.py`

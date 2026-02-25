@@ -37,11 +37,9 @@ class TikTokPublisher:
     BASE_URL = "https://open.tiktokapis.com/v2"
 
     def __init__(self):
-        # TODO: validate access token exists
-        # TODO: check token expiry and refresh if needed
         self.access_token = settings.TIKTOK_ACCESS_TOKEN
         self.open_id      = settings.TIKTOK_OPEN_ID
-        raise NotImplementedError
+        logger.info("TikTokPublisher initialized")
 
     def publish(self, video_path: Path, caption: str, hashtags: list[str]) -> dict:
         logger.info("Publishing video to TikTok: {}", video_path)

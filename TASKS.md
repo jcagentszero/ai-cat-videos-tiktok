@@ -83,4 +83,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement TikTokPublisher._create_post — submit post with caption and privacy settings <!-- files: publishers/tiktok.py -->
 - [x] Implement TikTokPublisher._check_status — poll publish status until live or failed <!-- files: publishers/tiktok.py -->
 - [x] Implement TikTokPublisher.publish — full end-to-end wrapper <!-- files: publishers/tiktok.py -->
+- [x] Write smoke test: upload a short test video, confirm it appears in TikTok drafts <!-- files: publishers/tiktok.py -->
 <!-- Completed tasks moved here -->
