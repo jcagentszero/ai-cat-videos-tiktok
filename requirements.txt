@@ -14,8 +14,8 @@ requests==2.32.5
 # TODO: add ffmpeg-python if video trimming/resizing needed
 # ffmpeg-python==0.2.0
 
-# Scheduling (if running as a daemon rather than cron)
-# APScheduler==3.10.4
+# Scheduling
+APScheduler==3.10.4
 
 # Utilities
 loguru==0.7.2         # structured logging

@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument("--dry-run",  action="store_true",      help="Generate video but skip posting")
     parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
+    parser.add_argument("--schedule", action="store_true",      help="Run as daemon on POST_SCHEDULE_CRON schedule")
     return parser.parse_args()
 
 
@@ -37,6 +38,16 @@ def main():
         except Exception as e:
             logger.error("OAuth flow failed: {}", e)
             sys.exit(1)
+        return
+
+    if args.schedule:
+        try:
+            validate_config(dry_run=False)
+        except ValueError as e:
+            logger.error("Configuration error: {}", e)
+            sys.exit(1)
+        from scheduler.cron import run_scheduler
+        run_scheduler()
         return
 
     if args.prompt and args.category:

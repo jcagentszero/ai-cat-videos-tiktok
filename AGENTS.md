@@ -11,6 +11,9 @@ python main.py
 
 # Run with dry-run (no publishing)
 python main.py --dry-run
+
+# Run as scheduled daemon
+python main.py --schedule
 ```
 
 ## Validation
@@ -35,6 +38,7 @@ python -m pytest tests/ -v
 - **Storage**: `storage/manager.py` — local file management and run history
 - **Prompts**: `prompts/cat_prompts.py` — prompt library for cat video generation
 - **Utils**: `utils/logger.py` — structured logging with loguru
+- **Scheduler**: `scheduler/cron.py` — APScheduler daemon with CronTrigger from POST_SCHEDULE_CRON
 - **Entry point**: `main.py` — CLI argument parsing and pipeline invocation
 
 ## Conventions
