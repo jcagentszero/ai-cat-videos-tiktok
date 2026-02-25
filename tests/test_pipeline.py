@@ -419,3 +419,61 @@ class TestHandleError:
                     pipe._handle_error("publish", RuntimeError("fail"))
         mock_logger.warning.assert_called_once()
         assert "notification" in mock_logger.warning.call_args[0][0].lower()
+
+
+class TestSaveFailure:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        return Pipeline(dry_run=True)
+
+    def test_saves_failure_record(self, pipe):
+        pipe._save_failure("test prompt", Path("/fake/video.mp4"), RuntimeError("boom"))
+        pipe.storage.save_run.assert_called_once()
+        args = pipe.storage.save_run.call_args[0]
+        assert args[0] == "test prompt"
+        assert args[1] == Path("/fake/video.mp4")
+        assert args[2]["status"] == "failed"
+        assert "RuntimeError: boom" in args[2]["error"]
+
+    def test_uses_unknown_prompt_when_none(self, pipe):
+        pipe._save_failure(None, None, ValueError("no prompt"))
+        args = pipe.storage.save_run.call_args[0]
+        assert args[0] == "unknown"
+
+    def test_handles_none_video_path(self, pipe):
+        pipe._save_failure("a prompt", None, RuntimeError("fail"))
+        args = pipe.storage.save_run.call_args[0]
+        assert args[2]["video_path"] is None
+
+    def test_save_error_does_not_raise(self, pipe):
+        pipe.storage.save_run.side_effect = OSError("disk full")
+        pipe._save_failure("p", None, RuntimeError("fail"))  # should not raise
+
+    def test_generate_failure_saves_record(self, mock_veo, mock_tiktok, mock_storage):
+        _, gen = mock_veo
+        gen.generate.side_effect = RuntimeError("veo down")
+        pipe = Pipeline(dry_run=True)
+        pipe.storage.get_recent_prompts.return_value = []
+        with pytest.raises(RuntimeError, match="veo down"):
+            pipe.run(prompt="A cat on a couch")
+        save_calls = [
+            c for c in pipe.storage.save_run.call_args_list
+            if c[0][2].get("status") == "failed"
+        ]
+        assert len(save_calls) == 1
+        assert "RuntimeError" in save_calls[0][0][2]["error"]
+
+    def test_publish_failure_saves_record(self, mock_veo, mock_tiktok, mock_storage):
+        _, gen = mock_veo
+        gen.generate.return_value = Path("/fake/video.mp4")
+        _, pub = mock_tiktok
+        pub.publish.side_effect = RuntimeError("upload failed")
+        pipe = Pipeline(dry_run=False)
+        with pytest.raises(RuntimeError, match="upload failed"):
+            pipe.run(prompt="A cat on a couch")
+        save_calls = [
+            c for c in pipe.storage.save_run.call_args_list
+            if c[0][2].get("status") == "failed"
+        ]
+        assert len(save_calls) == 1
+        assert save_calls[0][0][2]["video_path"] == "/fake/video.mp4"

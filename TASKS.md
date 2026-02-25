@@ -42,8 +42,8 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 ## 🟢 Phase 5 — Scheduling & Automation
 
 - [x] Add cron job or APScheduler to run pipeline on POST_SCHEDULE_CRON schedule <!-- files: main.py, scheduler/cron.py -->
-- [ ] Implement StorageManager.cleanup_old_videos — delete videos older than keep_last to manage disk space <!-- files: storage/manager.py -->
-- [ ] Add run summary report (daily digest of what was posted, any failures) <!-- files: pipeline/runner.py, utils/logger.py -->
+
+- [x] Add run summary report (daily digest of what was posted, any failures) <!-- files: pipeline/digest.py, pipeline/runner.py, storage/manager.py, main.py -->
 
 ---
 
@@ -92,4 +92,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement DRY_RUN mode — skip publishing step, log what would have been posted <!-- files: pipeline/runner.py, config/settings.py -->
 - [x] Wire up main.py argument parsing and Pipeline invocation <!-- files: main.py -->
 - [x] Add cron job or APScheduler to run pipeline on POST_SCHEDULE_CRON schedule <!-- files: main.py -->
+- [x] Implement StorageManager.cleanup_old_videos — delete videos older than keep_last to manage disk space <!-- files: storage/manager.py -->
 <!-- Completed tasks moved here -->

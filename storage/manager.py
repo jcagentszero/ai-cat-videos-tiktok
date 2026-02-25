@@ -92,6 +92,23 @@ class StorageManager:
         logger.debug("Next video path: {}", path)
         return path
 
+    def get_runs_for_date(self, date_str=None):
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            if not RUN_LOG.exists():
+                return []
+            history = json.loads(RUN_LOG.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read {}: {}", RUN_LOG, exc)
+            return []
+
+        return [
+            r for r in history
+            if isinstance(r, dict) and r.get("timestamp", "").startswith(date_str)
+        ]
+
     def cleanup_old_videos(self, keep_last: int = 30) -> None:
         """
         Delete old video files keeping the most recent `keep_last`.

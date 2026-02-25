@@ -100,3 +100,18 @@ class TestMainCategory:
         with patch("sys.argv", ["main.py", "--dry-run"]):
             main()
         self.pipeline_instance.run.assert_called_once_with(prompt=None)
+
+
+class TestMainDigest:
+    def test_digest_calls_generate_daily_digest(self):
+        with patch("sys.argv", ["main.py", "--digest"]):
+            with patch("pipeline.digest.generate_daily_digest") as mock_digest:
+                main()
+        mock_digest.assert_called_once()
+
+    def test_digest_does_not_run_pipeline(self):
+        with patch("sys.argv", ["main.py", "--digest"]):
+            with patch("pipeline.digest.generate_daily_digest"):
+                with patch("pipeline.runner.Pipeline") as mock_pipeline:
+                    main()
+        mock_pipeline.assert_not_called()

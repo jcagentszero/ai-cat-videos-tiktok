@@ -8,6 +8,7 @@ Usage:
   python main.py --prompt "..."   # override the prompt
   python main.py --dry-run        # generate but don't post
   python main.py --category funny # use a specific prompt category
+  python main.py --digest         # print daily run summary
 """
 
 import argparse
@@ -25,6 +26,7 @@ def parse_args():
     parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
     parser.add_argument("--schedule", action="store_true",      help="Run as daemon on POST_SCHEDULE_CRON schedule")
+    parser.add_argument("--digest",   action="store_true",      help="Print daily run summary digest")
     return parser.parse_args()
 
 
@@ -48,6 +50,11 @@ def main():
             sys.exit(1)
         from scheduler.cron import run_scheduler
         run_scheduler()
+        return
+
+    if args.digest:
+        from pipeline.digest import generate_daily_digest
+        generate_daily_digest()
         return
 
     if args.prompt and args.category:

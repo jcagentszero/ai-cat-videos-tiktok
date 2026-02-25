@@ -169,6 +169,62 @@ class TestGetRecentPrompts:
         assert result[0] == "prompt 5"
 
 
+class TestGetRunsForDate:
+    def test_returns_matching_runs(self, storage, run_log):
+        history = [
+            {"timestamp": "2026-02-24T10:00:00", "prompt": "cat a", "result": {"status": "published"}},
+            {"timestamp": "2026-02-25T10:00:00", "prompt": "cat b", "result": {"status": "published"}},
+            {"timestamp": "2026-02-24T14:00:00", "prompt": "cat c", "result": {"status": "dry_run"}},
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_for_date("2026-02-24")
+        assert len(result) == 2
+        assert result[0]["prompt"] == "cat a"
+        assert result[1]["prompt"] == "cat c"
+
+    def test_defaults_to_today(self, storage, run_log):
+        today = datetime.now().strftime("%Y-%m-%d")
+        history = [
+            {"timestamp": f"{today}T12:00:00", "prompt": "today cat", "result": {"status": "published"}},
+            {"timestamp": "2020-01-01T12:00:00", "prompt": "old cat", "result": {"status": "published"}},
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_for_date()
+        assert len(result) == 1
+        assert result[0]["prompt"] == "today cat"
+
+    def test_returns_empty_when_no_file(self, storage, run_log):
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_runs_for_date("2026-02-24") == []
+
+    def test_returns_empty_when_no_matching_date(self, storage, run_log):
+        history = [
+            {"timestamp": "2026-02-25T10:00:00", "prompt": "cat", "result": {"status": "published"}},
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_for_date("2026-02-24")
+        assert result == []
+
+    def test_handles_corrupt_json(self, storage, run_log):
+        run_log.write_text("not valid json{{{")
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_runs_for_date("2026-02-24") == []
+
+    def test_skips_non_dict_records(self, storage, run_log):
+        history = [
+            {"timestamp": "2026-02-24T10:00:00", "prompt": "cat", "result": {"status": "published"}},
+            "bad record",
+            42,
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_for_date("2026-02-24")
+        assert len(result) == 1
+
+
 def _create_videos(output_dir, count, base_time=1000000):
     """Helper to create mp4 files with distinct modification times."""
     import os

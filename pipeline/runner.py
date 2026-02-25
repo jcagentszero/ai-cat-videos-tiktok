@@ -16,6 +16,7 @@ import smtplib
 import traceback
 from datetime import datetime
 from email.message import EmailMessage
+from pathlib import Path
 
 from config import settings
 from generators.veo import VeoGenerator
@@ -66,50 +67,56 @@ class Pipeline:
             Result dict: {prompt, video_path, caption, hashtags,
                           publish_result, status}
         """
-        # 1. Select prompt
-        try:
-            if prompt is None:
-                prompt = self._select_prompt()
-            logger.info("Pipeline run started with prompt: {!r}", prompt[:80])
-        except Exception as e:
-            self._handle_error("select_prompt", e)
-            raise
+        video_path = None
 
-        # 2. Generate video
         try:
-            video_path = self.generator.generate(prompt)
-            logger.info("Video generated: {}", video_path)
-        except Exception as e:
-            self._handle_error("generate", e)
-            raise
-
-        # 3. Build caption and hashtags
-        try:
-            caption, hashtags = self._build_caption(prompt)
-        except Exception as e:
-            self._handle_error("build_caption", e)
-            raise
-
-        # 4. Publish (skip if dry_run)
-        publish_result = None
-        if self.dry_run:
-            logger.info(
-                "DRY_RUN: skipping publish — would have posted: "
-                "video={}, caption={!r}, hashtags={}",
-                video_path, caption, hashtags,
-            )
-            status = "dry_run"
-        else:
+            # 1. Select prompt
             try:
-                publish_result = self.publisher.publish(
-                    video_path, caption, hashtags,
-                )
-                status = "published"
+                if prompt is None:
+                    prompt = self._select_prompt()
+                logger.info("Pipeline run started with prompt: {!r}", prompt[:80])
             except Exception as e:
-                self._handle_error("publish", e)
+                self._handle_error("select_prompt", e)
                 raise
 
-        # 5. Save run record
+            # 2. Generate video
+            try:
+                video_path = self.generator.generate(prompt)
+                logger.info("Video generated: {}", video_path)
+            except Exception as e:
+                self._handle_error("generate", e)
+                raise
+
+            # 3. Build caption and hashtags
+            try:
+                caption, hashtags = self._build_caption(prompt)
+            except Exception as e:
+                self._handle_error("build_caption", e)
+                raise
+
+            # 4. Publish (skip if dry_run)
+            publish_result = None
+            if self.dry_run:
+                logger.info(
+                    "DRY_RUN: skipping publish — would have posted: "
+                    "video={}, caption={!r}, hashtags={}",
+                    video_path, caption, hashtags,
+                )
+                status = "dry_run"
+            else:
+                try:
+                    publish_result = self.publisher.publish(
+                        video_path, caption, hashtags,
+                    )
+                    status = "published"
+                except Exception as e:
+                    self._handle_error("publish", e)
+                    raise
+        except Exception as e:
+            self._save_failure(prompt, video_path, e)
+            raise
+
+        # 5. Save run record (only reached on success)
         result = {
             "prompt": prompt,
             "video_path": str(video_path),
@@ -126,6 +133,22 @@ class Pipeline:
 
         logger.info("Pipeline run complete (status={})", status)
         return result
+
+    def _save_failure(self, prompt, video_path, error):
+        fail_result = {
+            "prompt": prompt,
+            "video_path": str(video_path) if video_path else None,
+            "status": "failed",
+            "error": f"{type(error).__name__}: {error}",
+        }
+        try:
+            self.storage.save_run(
+                prompt or "unknown",
+                video_path or Path("."),
+                fail_result,
+            )
+        except Exception as save_err:
+            logger.debug("Could not save failure record: {}", save_err)
 
     def _select_prompt(self) -> str:
         recent = set(self.storage.get_recent_prompts())
