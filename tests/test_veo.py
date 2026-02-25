@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 
 from generators.veo import VeoGenerator
@@ -186,3 +187,120 @@ class TestVeoPollJob:
 
         with pytest.raises(ConnectionError, match="network error"):
             gen._poll_job(pending)
+
+
+class TestVeoDownloadVideo:
+    @patch("generators.veo.gcs")
+    def test_downloads_to_dest_path(
+        self, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        _, creds = mock_credentials
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"), \
+             patch("config.settings.GCP_PROJECT_ID", "my-project"):
+            gen = VeoGenerator()
+
+            dest = tmp_path / "output" / "video.mp4"
+            mock_client = MagicMock()
+            mock_gcs.Client.return_value = mock_client
+            mock_blob = MagicMock()
+            mock_client.bucket.return_value.blob.return_value = mock_blob
+
+            def fake_download(path):
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                Path(path).write_bytes(b"fake video data")
+            mock_blob.download_to_filename.side_effect = fake_download
+
+            result = gen._download_video("gs://my-bucket/path/to/video.mp4", dest)
+
+            assert result == dest
+            mock_gcs.Client.assert_called_once_with(
+                credentials=creds,
+                project="my-project",
+            )
+            mock_client.bucket.assert_called_once_with("my-bucket")
+            mock_client.bucket.return_value.blob.assert_called_once_with("path/to/video.mp4")
+            mock_blob.download_to_filename.assert_called_once_with(str(dest))
+
+    @patch("generators.veo.gcs")
+    def test_creates_parent_directories(
+        self, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        dest = tmp_path / "deeply" / "nested" / "video.mp4"
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+
+        def fake_download(path):
+            Path(path).write_bytes(b"data")
+        mock_blob.download_to_filename.side_effect = fake_download
+
+        gen._download_video("gs://bucket/obj/video.mp4", dest)
+
+        assert dest.parent.exists()
+
+    def test_raises_on_invalid_uri_no_gs_prefix(
+        self, mock_credentials, mock_genai_client
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        with pytest.raises(ValueError, match="Invalid GCS URI"):
+            gen._download_video(
+                "https://storage.googleapis.com/bucket/vid.mp4",
+                Path("/tmp/video.mp4"),
+            )
+
+    def test_raises_on_invalid_uri_bucket_only(
+        self, mock_credentials, mock_genai_client
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        with pytest.raises(ValueError, match="Invalid GCS URI"):
+            gen._download_video("gs://bucket-only", Path("/tmp/video.mp4"))
+
+    def test_raises_on_empty_uri(
+        self, mock_credentials, mock_genai_client
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        with pytest.raises(ValueError, match="Invalid GCS URI"):
+            gen._download_video("gs://", Path("/tmp/video.mp4"))
+
+    @patch("generators.veo.gcs")
+    def test_raises_on_download_error(
+        self, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+        mock_blob.download_to_filename.side_effect = Exception("permission denied")
+
+        dest = tmp_path / "video.mp4"
+        with pytest.raises(Exception, match="permission denied"):
+            gen._download_video("gs://bucket/path/video.mp4", dest)
+
+    @patch("generators.veo.gcs")
+    def test_returns_dest_path(
+        self, mock_gcs, mock_credentials, mock_genai_client, tmp_path
+    ):
+        with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
+            gen = VeoGenerator()
+
+        dest = tmp_path / "video.mp4"
+        mock_blob = MagicMock()
+        mock_gcs.Client.return_value.bucket.return_value.blob.return_value = mock_blob
+
+        def fake_download(path):
+            Path(path).write_bytes(b"video bytes")
+        mock_blob.download_to_filename.side_effect = fake_download
+
+        result = gen._download_video("gs://bucket/output/vid.mp4", dest)
+
+        assert result == dest
+        assert result.exists()

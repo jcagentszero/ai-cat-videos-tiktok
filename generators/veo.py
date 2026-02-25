@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 from google import genai
+from google.cloud import storage as gcs
 from google.oauth2 import service_account
 
 from config import settings
@@ -40,6 +41,7 @@ class VeoGenerator:
             credentials = service_account.Credentials.from_service_account_file(
                 settings.GCP_CREDENTIALS
             )
+            self._credentials = credentials
             self.client = genai.Client(
                 vertexai=True,
                 project=settings.GCP_PROJECT_ID,
@@ -117,5 +119,32 @@ class VeoGenerator:
         return generated_videos[0].video.uri
 
     def _download_video(self, gcs_uri: str, dest: Path) -> Path:
-        """Download video from GCS URI to local path. TODO: implement."""
-        raise NotImplementedError
+        """Download video from GCS URI to local path."""
+        if not gcs_uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {gcs_uri}")
+
+        parts = gcs_uri[5:].split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(f"Invalid GCS URI: {gcs_uri}")
+
+        bucket_name, blob_name = parts
+
+        try:
+            storage_client = gcs.Client(
+                credentials=self._credentials,
+                project=settings.GCP_PROJECT_ID,
+            )
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            blob.download_to_filename(str(dest))
+
+            logger.info(
+                "Downloaded video to {} ({} bytes)",
+                dest, dest.stat().st_size,
+            )
+            return dest
+        except Exception as e:
+            logger.error("Failed to download video from {}: {}", gcs_uri, e)
+            raise
