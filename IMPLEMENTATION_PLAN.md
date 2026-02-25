@@ -8,9 +8,10 @@
 2. ~~**Structured logging** — configure loguru with file rotation and console output~~ ✅
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
 4. ~~**Veo 3 integration** — initialize client, poll jobs, download videos, generate end-to-end~~ ✅
-5. **TikTok publishing** — OAuth flow, token persistence, upload + post
-6. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
-7. **Scheduling** — cron/APScheduler, cleanup, daily digest
+5. **TikTok Developer App setup** — create app at developers.tiktok.com, get client key/secret ⏳ (manual — needs human)
+6. **TikTok publishing** — OAuth flow, token persistence, upload + post
+7. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
+8. **Scheduling** — cron/APScheduler, cleanup, daily digest
 
 ## Discoveries
 
@@ -38,6 +39,7 @@
 - Tenacity retry uses `sleep=lambda s: time.sleep(s)` to route through the module-level `time` import — tests that patch `generators.veo.time` automatically mock out tenacity's wait, avoiding real sleeps in tests
 - Smoke tests use `pytest.mark.smoke` + `skipif` on credential env vars; run with `pytest -m smoke` to target only integration tests
 - `_api_retry` decorator retries `ConnectionError` and Google API 429/5xx exceptions (3 attempts, exponential backoff 2-30s); non-transient errors propagate immediately
+- **TikTok Developer App setup**: requires manual registration at developers.tiktok.com; Content Posting API needs `video.upload` + `video.publish` scopes; new apps start in sandbox mode; app review required for public posting; OAuth redirect URI needed for token flow
 
 ## Completed
 

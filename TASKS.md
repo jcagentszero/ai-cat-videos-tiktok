@@ -80,4 +80,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement VeoGenerator._download_video — download finished video from GCS URI to local output/ <!-- files: generators/veo.py -->
 - [x] Implement VeoGenerator.generate — full end-to-end: submit prompt, poll, download, return path <!-- files: generators/veo.py -->
 - [x] Add retry logic to Veo generation (tenacity) for transient API errors <!-- files: generators/veo.py -->
+- [x] Write smoke test: generate one video, confirm file exists and is valid MP4 <!-- files: generators/veo.py -->
 <!-- Completed tasks moved here -->
