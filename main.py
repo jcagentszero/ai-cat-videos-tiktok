@@ -47,16 +47,19 @@ def main():
         logger.error("Configuration error: {}", e)
         sys.exit(1)
 
-    # TODO: override DRY_RUN from args if --dry-run passed
+    if args.dry_run:
+        import config.settings as _settings
+        _settings.DRY_RUN = True
 
-    # TODO: initialize and run pipeline
-    # from pipeline.runner import Pipeline
-    # for _ in range(args.count):
-    #     result = Pipeline().run(prompt=args.prompt)
-    #     print(f"Done: {result}")
-
-    print("Pipeline not yet implemented. See TASKS.md.")
-    sys.exit(0)
+    from pipeline.runner import Pipeline
+    for i in range(args.count):
+        try:
+            result = Pipeline().run(prompt=args.prompt)
+            logger.info("Run {}/{} complete (status={})",
+                        i + 1, args.count, result["status"])
+        except Exception as e:
+            logger.error("Run {}/{} failed: {}", i + 1, args.count, e)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

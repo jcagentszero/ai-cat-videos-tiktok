@@ -93,7 +93,11 @@ class Pipeline:
         # 4. Publish (skip if dry_run)
         publish_result = None
         if self.dry_run:
-            logger.info("DRY_RUN: skipping publish for {}", video_path)
+            logger.info(
+                "DRY_RUN: skipping publish — would have posted: "
+                "video={}, caption={!r}, hashtags={}",
+                video_path, caption, hashtags,
+            )
             status = "dry_run"
         else:
             try:

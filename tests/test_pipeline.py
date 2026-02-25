@@ -278,6 +278,18 @@ class TestPipelineRun:
         assert result["status"] == "dry_run"
         assert result["publish_result"] is None
 
+    def test_dry_run_logs_what_would_have_been_posted(self, dry_pipe):
+        with patch("pipeline.runner.logger") as mock_logger:
+            dry_pipe.run(prompt="A fluffy cat, sitting on a ledge")
+        info_calls = [c for c in mock_logger.info.call_args_list
+                      if "DRY_RUN" in str(c)]
+        assert len(info_calls) == 1
+        call_args = info_calls[0][0]
+        assert "would have posted" in call_args[0]
+        assert str(dry_pipe.generator.generate.return_value) in str(call_args[1])
+        assert "A fluffy cat" in call_args[2]
+        assert isinstance(call_args[3], list)
+
     def test_publishes_when_not_dry_run(self, pipe):
         result = pipe.run(prompt="A cat on a couch")
         assert result["status"] == "published"
