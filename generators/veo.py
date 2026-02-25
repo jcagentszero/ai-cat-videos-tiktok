@@ -22,6 +22,7 @@ SDK: google-genai (import google.genai)
 TODO: implement
 """
 
+import time
 from pathlib import Path
 
 from google import genai
@@ -73,9 +74,47 @@ class VeoGenerator:
         """
         raise NotImplementedError
 
-    def _poll_job(self, job_id: str, timeout: int = 300) -> str:
-        """Poll Veo job until complete, return video URI. TODO: implement."""
-        raise NotImplementedError
+    def _poll_job(self, operation, timeout=300):
+        """Poll Veo job until complete, return video URI."""
+        interval = 10
+        max_interval = 30
+        start = time.monotonic()
+
+        while not operation.done:
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    f"Veo generation timed out after {timeout}s"
+                )
+
+            logger.debug(
+                "Polling Veo job (elapsed={:.0f}s, next_poll={:.0f}s)",
+                elapsed, interval,
+            )
+            time.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
+
+            try:
+                operation = self.client.operations.get(operation)
+            except Exception as e:
+                logger.error("Failed to poll Veo job: {}", e)
+                raise
+
+        elapsed = time.monotonic() - start
+
+        if operation.error:
+            raise RuntimeError(
+                f"Veo generation failed: {operation.error.message}"
+            )
+
+        generated_videos = operation.result.generated_videos
+        if not generated_videos:
+            raise RuntimeError(
+                "Veo job completed but no videos were generated"
+            )
+
+        logger.info("Veo job completed in {:.1f}s", elapsed)
+        return generated_videos[0].video.uri
 
     def _download_video(self, gcs_uri: str, dest: Path) -> Path:
         """Download video from GCS URI to local path. TODO: implement."""

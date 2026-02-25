@@ -16,7 +16,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 2 — Video Generation (Veo 3)
 
-- [ ] Implement VeoGenerator.__init__ — initialize Google Cloud AI Platform client with service account credentials <!-- files: generators/veo.py -->
 - [ ] Implement VeoGenerator._poll_job — poll generation job status with exponential backoff until complete or timeout <!-- files: generators/veo.py -->
 - [ ] Implement VeoGenerator._download_video — download finished video from GCS URI to local output/ <!-- files: generators/veo.py -->
 - [ ] Implement VeoGenerator.generate — full end-to-end: submit prompt, poll, download, return path <!-- files: generators/veo.py -->
@@ -80,4 +79,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement StorageManager.save_run — write run records to logs/run_history.json <!-- files: storage/manager.py -->
 - [x] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
 - [x] Research and confirm Veo 3 API endpoint, SDK method names, and quota limits in GCP console <!-- files: generators/veo.py -->
+- [x] Implement VeoGenerator.__init__ — initialize Google Cloud AI Platform client with service account credentials <!-- files: generators/veo.py -->
 <!-- Completed tasks moved here -->

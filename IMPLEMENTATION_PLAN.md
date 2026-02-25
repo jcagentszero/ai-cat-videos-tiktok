@@ -7,7 +7,7 @@
 1. ~~**Config validation** — raise clear errors if required env vars missing at startup~~ ✅
 2. ~~**Structured logging** — configure loguru with file rotation and console output~~ ✅
 3. ~~**StorageManager methods** — next_video_path, save_run, get_recent_prompts~~ ✅
-4. **Veo 3 integration** — ~~initialize client~~, poll jobs, download videos
+4. **Veo 3 integration** — ~~initialize client~~, ~~poll jobs~~, download videos
 5. **TikTok publishing** — OAuth flow, token persistence, upload + post
 6. **Pipeline assembly** — wire generator + publisher + storage, add DRY_RUN mode
 7. **Scheduling** — cron/APScheduler, cleanup, daily digest
@@ -30,6 +30,7 @@
   - Typical generation time: 2-5 minutes per video; poll every 10-15 seconds
   - Region default `us-central1` is fine; `global` endpoint also available
   - Env vars for SDK: `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_GENAI_USE_VERTEXAI=True`
+- `_poll_job` accepts an operation object (not a string name) — `operations.get()` accepts both but passing the object preserves typed result access
 
 ## Completed
 
@@ -41,3 +42,4 @@
 - **StorageManager.save_run** — appends run records (timestamp, prompt, video_path, result) to `logs/run_history.json` with corrupt-file recovery, 6 tests in `tests/test_storage.py`
 - **StorageManager.get_recent_prompts** — reads last N prompts from run history with corrupt-file and malformed-record resilience, 6 tests in `tests/test_storage.py`
 - **VeoGenerator.__init__** — loads service account credentials via `google.oauth2.service_account`, creates `genai.Client(vertexai=True)` with explicit project/region/credentials, stores `self.client` and `self.model`, 6 tests in `tests/test_veo.py`
+- **VeoGenerator._poll_job** — polls `client.operations.get(operation)` with exponential backoff (10s initial, 1.5x factor, 30s cap), raises `TimeoutError` on timeout, `RuntimeError` on operation error or empty results, returns first video URI, 7 tests in `tests/test_veo.py`
