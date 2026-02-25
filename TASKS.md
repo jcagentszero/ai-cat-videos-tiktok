@@ -30,8 +30,7 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 4 — Pipeline Assembly
 
-- [ ] Implement Pipeline.__init__ — wire up generator, publisher, storage instances <!-- files: pipeline/runner.py -->
-- [ ] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
+- [x] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
 - [ ] Implement Pipeline._build_caption — generate caption text and hashtag list from prompt <!-- files: pipeline/runner.py -->
 - [ ] Implement Pipeline._handle_error — structured error logging with optional email notification <!-- files: pipeline/runner.py, utils/logger.py -->
 - [ ] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
@@ -84,4 +83,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Implement TikTokPublisher._check_status — poll publish status until live or failed <!-- files: publishers/tiktok.py -->
 - [x] Implement TikTokPublisher.publish — full end-to-end wrapper <!-- files: publishers/tiktok.py -->
 - [x] Write smoke test: upload a short test video, confirm it appears in TikTok drafts <!-- files: publishers/tiktok.py -->
+- [x] Implement Pipeline.__init__ — wire up generator, publisher, storage instances <!-- files: pipeline/runner.py -->
 <!-- Completed tasks moved here -->

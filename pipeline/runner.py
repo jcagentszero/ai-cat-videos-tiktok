@@ -11,8 +11,12 @@ Usage:
 TODO: implement
 """
 
+import random
+from datetime import datetime
+
 from config import settings
 from generators.veo import VeoGenerator
+from prompts.cat_prompts import ALL_PROMPTS, CATEGORY_MAP, DAY_SCHEDULE
 from publishers.tiktok import TikTokPublisher
 from storage.manager import StorageManager
 from utils.logger import logger
@@ -63,8 +67,30 @@ class Pipeline:
         raise NotImplementedError
 
     def _select_prompt(self) -> str:
-        """Pick prompt for this run. TODO: implement."""
-        raise NotImplementedError
+        recent = set(self.storage.get_recent_prompts())
+
+        day = datetime.now().weekday()
+        category_name = DAY_SCHEDULE[day]
+        pool = CATEGORY_MAP[category_name]
+
+        available = [p for p in pool if p not in recent]
+        if available:
+            prompt = random.choice(available)
+            logger.info("Selected prompt from '{}' ({} available)",
+                        category_name, len(available))
+            return prompt
+
+        all_available = [p for p in ALL_PROMPTS if p not in recent]
+        if all_available:
+            prompt = random.choice(all_available)
+            logger.info("Category '{}' exhausted, fell back to all prompts "
+                        "({} available)", category_name, len(all_available))
+            return prompt
+
+        prompt = random.choice(pool)
+        logger.warning("All prompts used recently, reusing from '{}'",
+                       category_name)
+        return prompt
 
     def _build_caption(self, prompt: str) -> tuple[str, list[str]]:
         """

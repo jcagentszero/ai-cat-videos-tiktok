@@ -1,7 +1,9 @@
 import pytest
+from datetime import datetime
 from unittest.mock import patch, MagicMock
 
 from pipeline.runner import Pipeline
+from prompts.cat_prompts import ALL_PROMPTS, COZY, DRAMATIC, PLAYFUL
 
 
 @pytest.fixture
@@ -83,3 +85,78 @@ class TestPipelineInit:
         with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
             pipe = Pipeline(dry_run=True)
         assert pipe.publisher is None
+
+
+class TestSelectPrompt:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        return Pipeline(dry_run=True)
+
+    def test_returns_prompt_from_scheduled_category(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = []
+        # Wednesday = weekday 2 = "dramatic"
+        wed = datetime(2026, 2, 25, 12, 0)  # a Wednesday
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            prompt = pipe._select_prompt()
+        assert prompt in DRAMATIC
+
+    def test_excludes_recently_used_prompts(self, pipe):
+        # Use all but one dramatic prompt as recent
+        pipe.storage.get_recent_prompts.return_value = DRAMATIC[:2]
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            prompt = pipe._select_prompt()
+        assert prompt == DRAMATIC[2]
+
+    def test_falls_back_to_all_prompts_when_category_exhausted(self, pipe):
+        # All dramatic prompts used recently
+        pipe.storage.get_recent_prompts.return_value = list(DRAMATIC)
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            prompt = pipe._select_prompt()
+        assert prompt in ALL_PROMPTS
+        assert prompt not in DRAMATIC
+
+    def test_reuses_from_category_when_all_prompts_exhausted(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = list(ALL_PROMPTS)
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            prompt = pipe._select_prompt()
+        assert prompt in DRAMATIC
+
+    def test_uses_correct_category_for_monday(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = []
+        mon = datetime(2026, 2, 23, 12, 0)  # a Monday
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = mon
+            prompt = pipe._select_prompt()
+        assert prompt in COZY
+
+    def test_uses_correct_category_for_tuesday(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = []
+        tue = datetime(2026, 2, 24, 12, 0)  # a Tuesday
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = tue
+            prompt = pipe._select_prompt()
+        assert prompt in PLAYFUL
+
+    def test_calls_get_recent_prompts(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = []
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            pipe._select_prompt()
+        pipe.storage.get_recent_prompts.assert_called_once()
+
+    def test_always_returns_a_string(self, pipe):
+        pipe.storage.get_recent_prompts.return_value = []
+        wed = datetime(2026, 2, 25, 12, 0)
+        with patch("pipeline.runner.datetime") as mock_dt:
+            mock_dt.now.return_value = wed
+            result = pipe._select_prompt()
+        assert isinstance(result, str)
+        assert len(result) > 0

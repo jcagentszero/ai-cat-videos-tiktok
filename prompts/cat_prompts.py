@@ -54,6 +54,19 @@ CUTE = [
 
 ALL_PROMPTS = COZY + PLAYFUL + DRAMATIC + FUNNY + CUTE
 
+CATEGORY_MAP = {
+    "cozy": COZY,
+    "playful": PLAYFUL,
+    "dramatic": DRAMATIC,
+    "funny": FUNNY,
+    "cute": CUTE,
+}
+
+DAY_SCHEDULE = {
+    0: "cozy", 1: "playful", 2: "dramatic", 3: "cozy",
+    4: "playful", 5: "funny", 6: "cute",
+}
+
 
 # ── Selectors ─────────────────────────────────────────────────────────────────
 
@@ -67,14 +80,7 @@ def get_prompt_by_category(category: str) -> str:
     Return a random prompt from a specific category.
     category: 'cozy' | 'playful' | 'dramatic' | 'funny' | 'cute'
     """
-    mapping = {
-        "cozy": COZY,
-        "playful": PLAYFUL,
-        "dramatic": DRAMATIC,
-        "funny": FUNNY,
-        "cute": CUTE,
-    }
-    pool = mapping.get(category.lower(), ALL_PROMPTS)
+    pool = CATEGORY_MAP.get(category.lower(), ALL_PROMPTS)
     return random.choice(pool)
 
 
@@ -85,6 +91,4 @@ def get_scheduled_prompt() -> str:
     TODO: add history tracking to avoid repeating recent prompts
     """
     day = datetime.now().weekday()  # 0=Mon ... 6=Sun
-    schedule = {0: "cozy", 1: "playful", 2: "dramatic", 3: "cozy",
-                4: "playful", 5: "funny", 6: "cute"}
-    return get_prompt_by_category(schedule[day])
+    return get_prompt_by_category(DAY_SCHEDULE[day])
