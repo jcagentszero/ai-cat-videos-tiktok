@@ -51,3 +51,4 @@ python -m pytest tests/ -v
 - Rate limits: Veo 3 has per-minute quotas, TikTok has daily post limits
 - `validate_config(dry_run=True)` skips TikTok var checks — use when testing GCP-only flows
 - Use `.venv/bin/python` to run lint/tests (system python lacks project deps)
+- Veo 3 SDK is `google-genai` (not `google-cloud-aiplatform`); model ID is `veo-3.0-generate-001`

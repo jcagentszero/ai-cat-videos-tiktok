@@ -11,8 +11,13 @@ Responsibilities:
   - Return a local file path
 
 API reference:
-  https://cloud.google.com/vertex-ai/generative-ai/docs/video/generate-videos
-  (Confirm Veo 3 endpoint and SDK method names when GA)
+  https://cloud.google.com/vertex-ai/generative-ai/docs/video/generate-videos-from-text
+
+SDK: google-genai (import google.genai)
+  - client = genai.Client()  (uses GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, GOOGLE_GENAI_USE_VERTEXAI env vars)
+  - client.models.generate_videos(model=..., prompt=..., config=GenerateVideosConfig(...))
+  - client.operations.get(operation)  — poll until operation.done
+  - video.video.save("out.mp4")  — download result
 
 TODO: implement
 """

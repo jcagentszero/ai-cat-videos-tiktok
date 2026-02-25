@@ -2,8 +2,7 @@
 python-dotenv==1.0.0
 
 # Google Cloud / Veo 3
-# TODO: confirm correct SDK package name when Veo 3 API is GA
-google-cloud-aiplatform>=1.60.0
+google-genai>=1.0.0
 google-auth>=2.29.0
 
 # TikTok

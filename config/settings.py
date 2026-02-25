@@ -21,7 +21,7 @@ CREDS_DIR  = ROOT_DIR / "credentials"
 # ── Google Cloud / Veo 3 ─────────────────────────────────────────────────────
 GCP_PROJECT_ID  = os.getenv("GOOGLE_CLOUD_PROJECT_ID", "")
 GCP_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-VEO_MODEL       = os.getenv("VEO_MODEL", "veo-003")
+VEO_MODEL       = os.getenv("VEO_MODEL", "veo-3.0-generate-001")
 VEO_REGION      = os.getenv("VEO_REGION", "us-central1")
 
 # ── TikTok ────────────────────────────────────────────────────────────────────

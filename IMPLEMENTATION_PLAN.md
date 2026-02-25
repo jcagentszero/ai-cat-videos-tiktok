@@ -19,6 +19,17 @@
 - `config/settings.py` uses aligned-assignment style (E221); pre-existing, not worth reformatting
 - `validate_config()` reads module attrs at call time via `sys.modules` so values can be patched in tests
 - `setup_logging()` runs at import time of `utils/logger.py`; call again to reconfigure (idempotent via `logger.remove()`)
+- **Veo 3 API confirmed (Feb 2025):**
+  - SDK: `google-genai` (not `google-cloud-aiplatform`); `from google import genai`
+  - Model ID: `veo-3.0-generate-001` (production), `veo-3.0-fast-generate-001` (fast variant)
+  - Veo 3.1 also available: `veo-3.1-generate-001` (higher quota: 50 req/min vs 10)
+  - Endpoint: `predictLongRunning` (async); poll with `fetchPredictOperation` (REST) or `client.operations.get()` (SDK)
+  - Quota: 10 requests/min per region for Veo 3.0; up to 4 videos per request (production)
+  - Durations: 4, 6, or 8 seconds; resolutions: 720p, 1080p; aspect ratios: 16:9, 9:16
+  - Audio generation supported via `generateAudio: true` (Veo 3+ only)
+  - Typical generation time: 2-5 minutes per video; poll every 10-15 seconds
+  - Region default `us-central1` is fine; `global` endpoint also available
+  - Env vars for SDK: `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_GENAI_USE_VERTEXAI=True`
 
 ## Completed
 
