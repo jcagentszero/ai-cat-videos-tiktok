@@ -8,15 +8,9 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🔴 Phase 0 — Repo Housekeeping
 
-- [x] Rename wiggum_loop.py → wiggum_glp1.py and update internal references <!-- files: wiggum_glp1.py -->
-- [x] Create wiggum_cat_videos.py — wiggum loop targeting ai-cat-videos-tiktok/TASKS.md <!-- files: wiggum_cat_videos.py -->
-
 ---
 
 ## 🔴 Phase 1 — Foundation (must complete before anything works)
-
-
-
 
 ---
 
@@ -79,10 +73,11 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## ✅ Done
 
+- [x] Rename wiggum_loop.py → wiggum_glp1.py and update internal references <!-- files: wiggum_glp1.py -->
+- [x] Create wiggum_cat_videos.py — wiggum loop targeting ai-cat-videos-tiktok/TASKS.md <!-- files: wiggum_cat_videos.py -->
 - [x] Implement config validation — raise clear errors if required env vars are missing at startup <!-- files: config/settings.py -->
 - [x] Set up structured logging — configure loguru with file rotation and console output <!-- files: utils/logger.py -->
 - [x] Implement StorageManager.next_video_path — date-stamped output file naming <!-- files: storage/manager.py -->
 - [x] Implement StorageManager.save_run — write run records to logs/run_history.json <!-- files: storage/manager.py -->
-- [x] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
 - [x] Implement StorageManager.get_recent_prompts — read history to avoid prompt repetition <!-- files: storage/manager.py -->
 <!-- Completed tasks moved here -->
