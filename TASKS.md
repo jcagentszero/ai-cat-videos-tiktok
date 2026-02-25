@@ -85,4 +85,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Write smoke test: upload a short test video, confirm it appears in TikTok drafts <!-- files: publishers/tiktok.py -->
 - [x] Implement Pipeline.__init__ — wire up generator, publisher, storage instances <!-- files: pipeline/runner.py -->
 - [x] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
+- [x] Implement Pipeline._build_caption — generate caption text and hashtag list from prompt <!-- files: pipeline/runner.py -->
 <!-- Completed tasks moved here -->

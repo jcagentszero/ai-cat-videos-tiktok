@@ -212,3 +212,76 @@ class TestBuildCaption:
         caption, _ = pipe._build_caption(PLAYFUL[0])
         assert isinstance(caption, str)
         assert len(caption) > 0
+
+
+class TestHandleError:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        return Pipeline(dry_run=True)
+
+    def test_does_not_raise(self, pipe):
+        pipe._handle_error("generate", ValueError("bad prompt"))
+
+    def test_logs_error_with_step_and_type(self, pipe):
+        err = RuntimeError("connection lost")
+        with patch("pipeline.runner.logger") as mock_logger:
+            pipe._handle_error("publish", err)
+        mock_logger.error.assert_called_once()
+        args = mock_logger.error.call_args
+        assert "publish" in args[0][1]
+        assert "RuntimeError" in args[0][2]
+
+    def test_logs_debug_traceback(self, pipe):
+        try:
+            raise ValueError("test error")
+        except ValueError as err:
+            with patch("pipeline.runner.logger") as mock_logger:
+                pipe._handle_error("generate", err)
+        mock_logger.debug.assert_called_once()
+        tb_str = mock_logger.debug.call_args[0][2]
+        assert "ValueError" in tb_str
+        assert "test error" in tb_str
+
+    def test_skips_email_when_not_configured(self, pipe):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", ""):
+            with patch("pipeline.runner.smtplib") as mock_smtp:
+                pipe._handle_error("generate", ValueError("x"))
+        mock_smtp.SMTP.assert_not_called()
+
+    def test_sends_email_when_configured(self, pipe):
+        mock_smtp_instance = MagicMock()
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
+            with patch("pipeline.runner.smtplib.SMTP") as mock_smtp_cls:
+                mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp_instance)
+                mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+                pipe._handle_error("publish", RuntimeError("upload failed"))
+        mock_smtp_instance.send_message.assert_called_once()
+        msg = mock_smtp_instance.send_message.call_args[0][0]
+        assert msg["To"] == "user@example.com"
+        assert "publish" in msg["Subject"]
+
+    def test_email_contains_error_details(self, pipe):
+        mock_smtp_instance = MagicMock()
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
+            with patch("pipeline.runner.smtplib.SMTP") as mock_smtp_cls:
+                mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp_instance)
+                mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+                pipe._handle_error("generate", ValueError("bad input"))
+        msg = mock_smtp_instance.send_message.call_args[0][0]
+        body = msg.get_content()
+        assert "generate" in body
+        assert "ValueError" in body
+        assert "bad input" in body
+
+    def test_email_failure_does_not_raise(self, pipe):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
+            with patch("pipeline.runner.smtplib.SMTP", side_effect=ConnectionRefusedError("no smtp")):
+                pipe._handle_error("publish", RuntimeError("fail"))
+
+    def test_email_failure_logs_warning(self, pipe):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
+            with patch("pipeline.runner.smtplib.SMTP", side_effect=ConnectionRefusedError("no smtp")):
+                with patch("pipeline.runner.logger") as mock_logger:
+                    pipe._handle_error("publish", RuntimeError("fail"))
+        mock_logger.warning.assert_called_once()
+        assert "notification" in mock_logger.warning.call_args[0][0].lower()

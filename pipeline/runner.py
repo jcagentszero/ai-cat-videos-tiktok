@@ -12,7 +12,10 @@ TODO: implement
 """
 
 import random
+import smtplib
+import traceback
 from datetime import datetime
+from email.message import EmailMessage
 
 from config import settings
 from generators.veo import VeoGenerator
@@ -120,5 +123,31 @@ class Pipeline:
         return caption, hashtags
 
     def _handle_error(self, step: str, error: Exception) -> None:
-        """Log error, send notification if configured. TODO: implement."""
-        raise NotImplementedError
+        tb = traceback.format_exception(type(error), error, error.__traceback__)
+        logger.error(
+            "Pipeline error at step '{}': [{}] {}",
+            step, type(error).__name__, error,
+        )
+        logger.debug("Traceback for '{}':\n{}", step, "".join(tb))
+
+        if not settings.NOTIFY_EMAIL:
+            return
+
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = f"Pipeline error: {step}"
+            msg["From"] = "pipeline@localhost"
+            msg["To"] = settings.NOTIFY_EMAIL
+            msg.set_content(
+                f"Step: {step}\n"
+                f"Error: {type(error).__name__}: {error}\n\n"
+                f"{''.join(tb)}"
+            )
+            with smtplib.SMTP("localhost") as smtp:
+                smtp.send_message(msg)
+            logger.info("Error notification sent to {}", settings.NOTIFY_EMAIL)
+        except Exception as mail_err:
+            logger.warning(
+                "Failed to send error notification: [{}] {}",
+                type(mail_err).__name__, mail_err,
+            )
