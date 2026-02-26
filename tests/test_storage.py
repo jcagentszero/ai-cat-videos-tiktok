@@ -1,6 +1,6 @@
 import json
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -223,6 +223,144 @@ class TestGetRunsForDate:
         with patch("storage.manager.RUN_LOG", run_log):
             result = storage.get_runs_for_date("2026-02-24")
         assert len(result) == 1
+
+
+def _old_timestamp(hours_ago=48):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+
+
+def _recent_timestamp(hours_ago=2):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+
+
+def _published_run(publish_id, video_id, timestamp, has_analytics=False):
+    result = {
+        "status": "published",
+        "publish_result": {
+            "publish_id": publish_id,
+            "video_id": video_id,
+        },
+    }
+    if has_analytics:
+        result["analytics"] = {"view_count": 100}
+    return {
+        "timestamp": timestamp,
+        "prompt": "cat sleeping",
+        "video_path": "/fake/video.mp4",
+        "result": result,
+    }
+
+
+class TestGetRunsNeedingAnalytics:
+    def test_returns_old_published_runs(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _old_timestamp(48)),
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_needing_analytics(delay_hours=24)
+        assert len(result) == 1
+
+    def test_skips_recent_runs(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _recent_timestamp(2)),
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_needing_analytics(delay_hours=24)
+        assert len(result) == 0
+
+    def test_skips_runs_with_analytics(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _old_timestamp(48), has_analytics=True),
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_needing_analytics(delay_hours=24)
+        assert len(result) == 0
+
+    def test_skips_failed_runs(self, storage, run_log):
+        history = [{
+            "timestamp": _old_timestamp(48),
+            "prompt": "cat",
+            "video_path": "/fake/v.mp4",
+            "result": {"status": "failed", "error": "RuntimeError"},
+        }]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_needing_analytics(delay_hours=24)
+        assert len(result) == 0
+
+    def test_skips_runs_without_video_id(self, storage, run_log):
+        history = [{
+            "timestamp": _old_timestamp(48),
+            "prompt": "cat",
+            "video_path": "/fake/v.mp4",
+            "result": {
+                "status": "published",
+                "publish_result": {"publish_id": "pub_1", "video_id": None},
+            },
+        }]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.get_runs_needing_analytics(delay_hours=24)
+        assert len(result) == 0
+
+    def test_returns_empty_when_no_file(self, storage, run_log):
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_runs_needing_analytics() == []
+
+    def test_handles_corrupt_json(self, storage, run_log):
+        run_log.write_text("not valid json{{{")
+        with patch("storage.manager.RUN_LOG", run_log):
+            assert storage.get_runs_needing_analytics() == []
+
+
+class TestUpdateRunAnalytics:
+    def test_updates_matching_record(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _old_timestamp(48)),
+        ]
+        run_log.write_text(json.dumps(history))
+        analytics = {"view_count": 500, "like_count": 50}
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.update_run_analytics("pub_1", analytics)
+        assert result is True
+        updated = json.loads(run_log.read_text())
+        assert updated[0]["result"]["analytics"] == analytics
+        assert "analytics_fetched_at" in updated[0]["result"]
+
+    def test_returns_false_when_no_match(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _old_timestamp(48)),
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.update_run_analytics("pub_999", {"view_count": 0})
+        assert result is False
+
+    def test_returns_false_when_no_file(self, storage, run_log):
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.update_run_analytics("pub_1", {"view_count": 0})
+        assert result is False
+
+    def test_handles_corrupt_json(self, storage, run_log):
+        run_log.write_text("not valid json{{{")
+        with patch("storage.manager.RUN_LOG", run_log):
+            result = storage.update_run_analytics("pub_1", {"view_count": 0})
+        assert result is False
+
+    def test_does_not_modify_other_records(self, storage, run_log):
+        history = [
+            _published_run("pub_1", "vid_1", _old_timestamp(48)),
+            _published_run("pub_2", "vid_2", _old_timestamp(36)),
+        ]
+        run_log.write_text(json.dumps(history))
+        with patch("storage.manager.RUN_LOG", run_log):
+            storage.update_run_analytics("pub_1", {"view_count": 500})
+        updated = json.loads(run_log.read_text())
+        assert "analytics" in updated[0]["result"]
+        assert "analytics" not in updated[1]["result"]
 
 
 def _create_videos(output_dir, count, base_time=1000000):

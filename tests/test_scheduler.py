@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from scheduler.cron import _parse_cron, _run_pipeline, run_scheduler
+from scheduler.cron import _parse_cron, _run_pipeline, _run_analytics, run_scheduler
 
 
 class TestParseCron:
@@ -79,7 +79,7 @@ class TestRunPipeline:
 
 
 class TestRunScheduler:
-    def test_adds_job_and_starts(self):
+    def test_adds_jobs_and_starts(self):
         mock_scheduler = MagicMock()
         with patch("scheduler.cron.BlockingScheduler",
                    return_value=mock_scheduler) as cls:
@@ -88,13 +88,13 @@ class TestRunScheduler:
                 mock_settings.POST_TIMEZONE = "America/Los_Angeles"
                 run_scheduler()
         cls.assert_called_once_with(timezone="America/Los_Angeles")
-        mock_scheduler.add_job.assert_called_once()
-        job_args = mock_scheduler.add_job.call_args
-        assert job_args[0][0] is _run_pipeline
-        assert job_args[1]["id"] == "pipeline_run"
+        assert mock_scheduler.add_job.call_count == 2
+        job_ids = [c[1]["id"] for c in mock_scheduler.add_job.call_args_list]
+        assert "pipeline_run" in job_ids
+        assert "analytics_collection" in job_ids
         mock_scheduler.start.assert_called_once()
 
-    def test_uses_cron_trigger(self):
+    def test_uses_cron_trigger_for_pipeline(self):
         mock_scheduler = MagicMock()
         with patch("scheduler.cron.BlockingScheduler",
                    return_value=mock_scheduler):
@@ -103,13 +103,11 @@ class TestRunScheduler:
                     mock_settings.POST_SCHEDULE_CRON = "30 9 * * 1"
                     mock_settings.POST_TIMEZONE = "UTC"
                     run_scheduler()
-        mock_trigger_cls.assert_called_once_with(
-            timezone="UTC",
-            minute="30",
-            hour="9",
-            day="*",
-            month="*",
-            day_of_week="1",
+        pipeline_call = mock_trigger_cls.call_args_list[0]
+        assert pipeline_call == (
+            (),
+            {"timezone": "UTC", "minute": "30", "hour": "9",
+             "day": "*", "month": "*", "day_of_week": "1"},
         )
 
     def test_handles_keyboard_interrupt(self):
@@ -142,3 +140,45 @@ class TestRunScheduler:
             mock_settings.POST_TIMEZONE = "UTC"
             with pytest.raises(ValueError, match="Expected 5-field"):
                 run_scheduler()
+
+    def test_analytics_job_uses_every_6_hours(self):
+        mock_scheduler = MagicMock()
+        with patch("scheduler.cron.BlockingScheduler",
+                   return_value=mock_scheduler):
+            with patch("scheduler.cron.CronTrigger") as mock_trigger_cls:
+                with patch("scheduler.cron.settings") as mock_settings:
+                    mock_settings.POST_SCHEDULE_CRON = "0 18 * * *"
+                    mock_settings.POST_TIMEZONE = "UTC"
+                    run_scheduler()
+        analytics_call = mock_trigger_cls.call_args_list[1]
+        assert analytics_call == ((), {"hour": "*/6", "timezone": "UTC"})
+
+
+class TestRunAnalytics:
+    def test_calls_collect_analytics(self):
+        with patch("pipeline.analytics_collector.collect_analytics",
+                   return_value={"collected": 2, "failed": 0}) as mock_collect:
+            _run_analytics()
+        mock_collect.assert_called_once()
+
+    def test_catches_error(self):
+        with patch("pipeline.analytics_collector.collect_analytics",
+                   side_effect=RuntimeError("api error")):
+            _run_analytics()  # should not raise
+
+    def test_logs_error(self):
+        with patch("pipeline.analytics_collector.collect_analytics",
+                   side_effect=RuntimeError("api error")):
+            with patch("scheduler.cron.logger") as mock_logger:
+                _run_analytics()
+        mock_logger.error.assert_called_once()
+        assert "Scheduled analytics collection failed" in mock_logger.error.call_args[0][0]
+
+    def test_logs_success(self):
+        with patch("pipeline.analytics_collector.collect_analytics",
+                   return_value={"collected": 3, "failed": 1}):
+            with patch("scheduler.cron.logger") as mock_logger:
+                _run_analytics()
+        info_calls = [c for c in mock_logger.info.call_args_list
+                      if "Scheduled analytics" in str(c)]
+        assert len(info_calls) == 1

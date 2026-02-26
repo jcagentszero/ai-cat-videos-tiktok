@@ -1190,3 +1190,125 @@ class TestPublishErrors:
                           side_effect=RuntimeError("No refresh token")):
             with pytest.raises(RuntimeError, match="No refresh token"):
                 pub.publish(video, "cat", [])
+
+    def test_returns_video_id_from_status(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_data = {
+            "publish_id": "pid_123",
+            "upload_url": "https://example.com/upload",
+        }
+        status_result = {
+            "status": "PUBLISH_COMPLETE",
+            "publicaly_available_post_id": ["7123456789"],
+        }
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post", return_value=create_data), \
+             patch.object(pub, "_upload_video", return_value=True), \
+             patch.object(pub, "_check_status", return_value=status_result):
+            result = pub.publish(video, "cute cat", ["catvideos"])
+        assert result["video_id"] == "7123456789"
+
+    def test_video_id_none_when_not_in_status(self, tmp_path):
+        video = tmp_path / "cat.mp4"
+        video.write_bytes(b"\x00" * 1024)
+
+        pub = _make_publisher_with_token()
+        create_data = {
+            "publish_id": "pid_123",
+            "upload_url": "https://example.com/upload",
+        }
+        status_result = {"status": "PUBLISH_COMPLETE"}
+
+        with patch.object(pub, "refresh_token", return_value="at_fresh"), \
+             patch.object(pub, "_create_post", return_value=create_data), \
+             patch.object(pub, "_upload_video", return_value=True), \
+             patch.object(pub, "_check_status", return_value=status_result):
+            result = pub.publish(video, "cute cat", [])
+        assert result["video_id"] is None
+
+
+def _mock_analytics_response(videos):
+    resp = MagicMock()
+    resp.json.return_value = {
+        "data": {"videos": videos},
+        "error": {"code": "ok"},
+    }
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+class TestFetchVideoAnalytics:
+    def test_returns_stats_for_videos(self):
+        pub = _make_publisher_with_token()
+        videos = [{
+            "id": "vid_1",
+            "view_count": 500,
+            "like_count": 50,
+            "comment_count": 5,
+            "share_count": 2,
+        }]
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_analytics_response(videos)):
+            result = pub.fetch_video_analytics(["vid_1"])
+        assert result["vid_1"]["view_count"] == 500
+        assert result["vid_1"]["like_count"] == 50
+
+    def test_returns_empty_for_empty_list(self):
+        pub = _make_publisher_with_token()
+        result = pub.fetch_video_analytics([])
+        assert result == {}
+
+    def test_sends_correct_request(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_analytics_response([])) as mock_post:
+            pub.fetch_video_analytics(["vid_1", "vid_2"])
+        call_kwargs = mock_post.call_args
+        assert "video/query" in call_kwargs[0][0]
+        body = call_kwargs[1]["json"]
+        assert set(body["filters"]["video_ids"]) == {"vid_1", "vid_2"}
+
+    def test_raises_on_http_error(self):
+        pub = _make_publisher_with_token()
+        with patch("publishers.tiktok.requests.post",
+                   side_effect=requests_lib.ConnectionError("network down")):
+            with pytest.raises(RuntimeError, match="Analytics fetch request failed"):
+                pub.fetch_video_analytics(["vid_1"])
+
+    def test_raises_on_api_error(self):
+        pub = _make_publisher_with_token()
+        resp = MagicMock()
+        resp.json.return_value = {
+            "error": {"code": "access_token_invalid", "message": "bad token"},
+        }
+        resp.raise_for_status = MagicMock()
+        with patch("publishers.tiktok.requests.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="TikTok analytics query failed"):
+                pub.fetch_video_analytics(["vid_1"])
+
+    def test_handles_multiple_videos(self):
+        pub = _make_publisher_with_token()
+        videos = [
+            {"id": "vid_1", "view_count": 100, "like_count": 10,
+             "comment_count": 1, "share_count": 0},
+            {"id": "vid_2", "view_count": 200, "like_count": 20,
+             "comment_count": 2, "share_count": 1},
+        ]
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_analytics_response(videos)):
+            result = pub.fetch_video_analytics(["vid_1", "vid_2"])
+        assert len(result) == 2
+        assert result["vid_1"]["view_count"] == 100
+        assert result["vid_2"]["view_count"] == 200
+
+    def test_uses_bearer_auth(self):
+        pub = _make_publisher_with_token("my_token")
+        with patch("publishers.tiktok.requests.post",
+                   return_value=_mock_analytics_response([])) as mock_post:
+            pub.fetch_video_analytics(["vid_1"])
+        headers = mock_post.call_args[1]["headers"]
+        assert headers["Authorization"] == "Bearer my_token"

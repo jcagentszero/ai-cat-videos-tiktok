@@ -41,6 +41,7 @@ python -m pytest tests/ -v
 - **Utils**: `utils/logger.py` — structured logging with loguru
 - **Validation**: `utils/video_validator.py` — MP4 integrity + TikTok size/duration checks (ffprobe optional)
 - **Digest**: `pipeline/digest.py` — daily run summary report (successes + failures, optional email)
+- **Analytics**: `pipeline/analytics_collector.py` — fetches TikTok view/like counts and logs to run history
 - **Scheduler**: `scheduler/cron.py` — APScheduler daemon with CronTrigger from POST_SCHEDULE_CRON
 - **Entry point**: `main.py` — CLI argument parsing and pipeline invocation
 
@@ -63,3 +64,4 @@ python -m pytest tests/ -v
 - TikTok OAuth: `python main.py --auth` or `python -m publishers.oauth`; requires `http://localhost:8080/callback` registered as redirect URI in TikTok app settings
 - TikTok API has no separate "publish" endpoint — `post_info` (caption, privacy) goes in the same `/v2/post/publish/video/init/` call as `source_info`; use `_create_post` (not `_init_upload`) for direct posting
 - **Caption LLM**: `generators/caption.py` uses Anthropic Claude; falls back to first-comma-clause if `ANTHROPIC_API_KEY` not set; default model is `claude-haiku-4-5-20251001`
+- **Analytics**: `python main.py --analytics` fetches TikTok stats; scheduler runs every 6h; requires `video.list` TikTok scope

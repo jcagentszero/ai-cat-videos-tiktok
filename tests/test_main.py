@@ -102,6 +102,31 @@ class TestMainCategory:
         self.pipeline_instance.run.assert_called_once_with(prompt=None)
 
 
+class TestMainAnalytics:
+    def test_analytics_calls_collect(self):
+        with patch("sys.argv", ["main.py", "--analytics"]):
+            with patch("pipeline.analytics_collector.collect_analytics",
+                       return_value={"collected": 2, "failed": 0}) as mock_collect:
+                main()
+        mock_collect.assert_called_once()
+
+    def test_analytics_does_not_run_pipeline(self):
+        with patch("sys.argv", ["main.py", "--analytics"]):
+            with patch("pipeline.analytics_collector.collect_analytics",
+                       return_value={"collected": 0, "failed": 0}):
+                with patch("pipeline.runner.Pipeline") as mock_pipeline:
+                    main()
+        mock_pipeline.assert_not_called()
+
+    def test_analytics_exits_on_error(self):
+        with patch("sys.argv", ["main.py", "--analytics"]):
+            with patch("pipeline.analytics_collector.collect_analytics",
+                       side_effect=RuntimeError("api down")):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+        assert exc_info.value.code == 1
+
+
 class TestMainDigest:
     def test_digest_calls_generate_daily_digest(self):
         with patch("sys.argv", ["main.py", "--digest"]):

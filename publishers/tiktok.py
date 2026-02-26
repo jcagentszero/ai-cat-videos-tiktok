@@ -85,13 +85,19 @@ class TikTokPublisher:
             )
             raise
 
+        video_id = None
+        post_ids = status_result.get("publicaly_available_post_id", [])
+        if post_ids:
+            video_id = post_ids[0]
+
         logger.info(
-            "Video published successfully (publish_id={}, status={})",
-            publish_id, status_result.get("status"),
+            "Video published successfully (publish_id={}, status={}, video_id={})",
+            publish_id, status_result.get("status"), video_id,
         )
 
         return {
             "publish_id": publish_id,
+            "video_id": video_id,
             "status": status_result.get("status"),
             "video_path": str(video_path),
         }
@@ -320,6 +326,56 @@ class TikTokPublisher:
 
             time.sleep(interval)
             interval = min(interval * 1.5, max_interval)
+
+    def fetch_video_analytics(self, video_ids: list[str]) -> dict:
+        if not video_ids:
+            return {}
+
+        url = (
+            f"{self.BASE_URL}/video/query/"
+            f"?fields=id,title,view_count,like_count,comment_count,share_count"
+        )
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        }
+        body = {
+            "filters": {
+                "video_ids": video_ids,
+            },
+        }
+
+        logger.debug("Fetching analytics for {} video(s)", len(video_ids))
+
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.error("Analytics fetch request failed: {}", exc)
+            raise RuntimeError(f"Analytics fetch request failed: {exc}") from exc
+
+        data = resp.json()
+
+        error = data.get("error", {})
+        if error.get("code") != "ok":
+            error_msg = error.get("message") or error.get("code", "unknown")
+            logger.error("TikTok analytics query failed: {}", error_msg)
+            raise RuntimeError(f"TikTok analytics query failed: {error_msg}")
+
+        videos = data.get("data", {}).get("videos", [])
+        result = {}
+        for video in videos:
+            vid = video.get("id")
+            if vid:
+                result[vid] = {
+                    "view_count": video.get("view_count", 0),
+                    "like_count": video.get("like_count", 0),
+                    "comment_count": video.get("comment_count", 0),
+                    "share_count": video.get("share_count", 0),
+                }
+
+        logger.info("Fetched analytics for {}/{} video(s)", len(result), len(video_ids))
+        return result
 
     def refresh_token(self) -> str:
         tokens = token_store.load_tokens()

@@ -32,7 +32,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟢 Phase 6 — Quality & Extras
 
-- [ ] Add video validation step — confirm MP4 is non-corrupt and meets TikTok size/duration limits before upload <!-- files: pipeline/runner.py -->
 - [ ] Add TikTok analytics fetching — pull view/like counts 24h after posting, log to run history <!-- files: publishers/tiktok.py, storage/manager.py -->
 - [ ] Multi-platform scaffold — add publishers/instagram.py and publishers/youtube_shorts.py as empty stubs for future expansion <!-- files: publishers/ -->
 
@@ -77,4 +76,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Add run summary report (daily digest of what was posted, any failures) <!-- files: pipeline/runner.py, utils/logger.py -->
 - [x] Expand prompt library — add 10+ prompts per category with Veo-optimized language <!-- files: prompts/cat_prompts.py -->
 - [x] LLM-generated captions — call Claude/GPT to write unique captions per video instead of static text <!-- files: pipeline/runner.py -->
+- [x] Add video validation step — confirm MP4 is non-corrupt and meets TikTok size/duration limits before upload <!-- files: pipeline/runner.py -->
 <!-- Completed tasks moved here -->

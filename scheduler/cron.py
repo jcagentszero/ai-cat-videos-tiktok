@@ -38,6 +38,18 @@ def _run_pipeline():
         logger.error("Scheduled run failed: {}", e)
 
 
+def _run_analytics():
+    from pipeline.analytics_collector import collect_analytics
+    try:
+        result = collect_analytics()
+        logger.info(
+            "Scheduled analytics: {} collected, {} failed",
+            result["collected"], result["failed"],
+        )
+    except Exception as e:
+        logger.error("Scheduled analytics collection failed: {}", e)
+
+
 def run_scheduler():
     cron_kwargs = _parse_cron(settings.POST_SCHEDULE_CRON)
     trigger = CronTrigger(timezone=settings.POST_TIMEZONE, **cron_kwargs)
@@ -48,6 +60,16 @@ def run_scheduler():
         trigger,
         id="pipeline_run",
         name="AI Cat Video Pipeline",
+    )
+
+    analytics_trigger = CronTrigger(
+        hour="*/6", timezone=settings.POST_TIMEZONE,
+    )
+    scheduler.add_job(
+        _run_analytics,
+        analytics_trigger,
+        id="analytics_collection",
+        name="TikTok Analytics Collection",
     )
 
     logger.info(

@@ -13,7 +13,7 @@ TODO: implement
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from config import settings
 from utils.logger import logger
@@ -108,6 +108,79 @@ class StorageManager:
             r for r in history
             if isinstance(r, dict) and r.get("timestamp", "").startswith(date_str)
         ]
+
+    def get_runs_needing_analytics(self, delay_hours: int = 24) -> list[dict]:
+        try:
+            if not RUN_LOG.exists():
+                return []
+            history = json.loads(RUN_LOG.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read {}: {}", RUN_LOG, exc)
+            return []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=delay_hours)
+        results = []
+
+        for record in history:
+            if not isinstance(record, dict):
+                continue
+
+            result = record.get("result", {})
+            if result.get("status") != "published":
+                continue
+
+            if result.get("analytics"):
+                continue
+
+            publish_result = result.get("publish_result", {})
+            video_id = publish_result.get("video_id") if publish_result else None
+            if not video_id:
+                continue
+
+            ts_str = record.get("timestamp", "")
+            try:
+                ts = datetime.fromisoformat(ts_str)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts > cutoff:
+                    continue
+            except ValueError:
+                continue
+
+            results.append(record)
+
+        return results
+
+    def update_run_analytics(self, publish_id: str, analytics: dict) -> bool:
+        try:
+            if not RUN_LOG.exists():
+                return False
+            history = json.loads(RUN_LOG.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read {}: {}", RUN_LOG, exc)
+            return False
+
+        updated = False
+        for record in history:
+            if not isinstance(record, dict):
+                continue
+            result = record.get("result", {})
+            publish_result = result.get("publish_result", {})
+            if publish_result and publish_result.get("publish_id") == publish_id:
+                result["analytics"] = analytics
+                result["analytics_fetched_at"] = datetime.now(timezone.utc).isoformat()
+                updated = True
+                break
+
+        if updated:
+            try:
+                RUN_LOG.write_text(json.dumps(history, indent=2) + "\n")
+                logger.info("Updated analytics for publish_id={}", publish_id)
+            except OSError as exc:
+                logger.error("Failed to write analytics to {}: {}", RUN_LOG, exc)
+                return False
+
+        return updated
 
     def cleanup_old_videos(self, keep_last: int = 30) -> None:
         """

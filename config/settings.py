@@ -46,6 +46,9 @@ NOTIFY_EMAIL             = os.getenv("NOTIFY_EMAIL", "")
 POST_SCHEDULE_CRON = os.getenv("POST_SCHEDULE_CRON", "0 18 * * *")
 POST_TIMEZONE      = os.getenv("POST_TIMEZONE", "America/Los_Angeles")
 
+# ── Analytics ────────────────────────────────────────────────────────────────
+ANALYTICS_DELAY_HOURS = int(os.getenv("ANALYTICS_DELAY_HOURS", "24"))
+
 # ── Validation ────────────────────────────────────────────────────────────────
 
 _REQUIRED = {

@@ -9,6 +9,7 @@ Usage:
   python main.py --dry-run        # generate but don't post
   python main.py --category funny # use a specific prompt category
   python main.py --digest         # print daily run summary
+  python main.py --analytics      # fetch TikTok analytics for recent posts
 """
 
 import argparse
@@ -27,6 +28,7 @@ def parse_args():
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
     parser.add_argument("--schedule", action="store_true",      help="Run as daemon on POST_SCHEDULE_CRON schedule")
     parser.add_argument("--digest",   action="store_true",      help="Print daily run summary digest")
+    parser.add_argument("--analytics", action="store_true",     help="Fetch TikTok analytics for recent posts")
     return parser.parse_args()
 
 
@@ -55,6 +57,19 @@ def main():
     if args.digest:
         from pipeline.digest import generate_daily_digest
         generate_daily_digest()
+        return
+
+    if args.analytics:
+        from pipeline.analytics_collector import collect_analytics
+        try:
+            result = collect_analytics()
+            logger.info(
+                "Analytics collection done: {} collected, {} failed",
+                result["collected"], result["failed"],
+            )
+        except Exception as e:
+            logger.error("Analytics collection failed: {}", e)
+            sys.exit(1)
         return
 
     if args.prompt and args.category:
