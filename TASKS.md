@@ -16,34 +16,17 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 2 — Video Generation (Veo 3)
 
-- [x] Write smoke test: generate one video, confirm file exists and is valid MP4 <!-- files: generators/veo.py -->
-
 ---
 
 ## 🟡 Phase 3 — TikTok Publishing
-
-- [x] Implement TikTokPublisher._init_upload — call Content Posting API init endpoint <!-- files: publishers/tiktok.py -->
-
-- [x] Write smoke test: upload a short test video, confirm it appears in TikTok drafts <!-- files: publishers/tiktok.py -->
 
 ---
 
 ## 🟡 Phase 4 — Pipeline Assembly
 
-- [x] Implement Pipeline._select_prompt — use scheduled selector with history deduplication <!-- files: pipeline/runner.py, prompts/cat_prompts.py -->
-- [x] Implement Pipeline._build_caption — generate caption text and hashtag list from prompt <!-- files: pipeline/runner.py -->
-
-- [x] Implement Pipeline.run — full end-to-end: prompt → generate → store → publish → log <!-- files: pipeline/runner.py -->
-- [x] Implement DRY_RUN mode — skip publishing step, log what would have been posted <!-- files: pipeline/runner.py, config/settings.py -->
-- [x] Wire up main.py argument parsing and Pipeline invocation <!-- files: main.py -->
-
 ---
 
 ## 🟢 Phase 5 — Scheduling & Automation
-
-- [x] Add cron job or APScheduler to run pipeline on POST_SCHEDULE_CRON schedule <!-- files: main.py, scheduler/cron.py -->
-
-- [x] Add run summary report (daily digest of what was posted, any failures) <!-- files: pipeline/digest.py, pipeline/runner.py, storage/manager.py, main.py -->
 
 ---
 
