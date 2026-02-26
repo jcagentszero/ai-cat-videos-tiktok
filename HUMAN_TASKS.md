@@ -6,24 +6,24 @@ These tasks require human action (account creation, credentials, config) and can
 
 ## Phase 1 — Foundation
 
-- [ ] Create `.env` file from `.env.example` and fill in real values
+- [x] Create `.env` file from `.env.example` and fill in real values
 
 ---
 
 ## Phase 2 — Video Generation (Veo 3)
 
-- [ ] Set up GCP project with Vertex AI / Imagen / Veo 3 API enabled
-- [ ] Create GCP service account and download credentials JSON
-- [ ] Set `GOOGLE_APPLICATION_CREDENTIALS` path in `.env`
-- [ ] Confirm Veo 3 quota limits and billing are active
+- [x] Set up GCP project with Vertex AI / Imagen / Veo 3 API enabled
+- [x] Create GCP service account and download credentials JSON
+- [x] Set `GOOGLE_APPLICATION_CREDENTIALS` path in `.env`
+- [x] Confirm Veo 3 quota limits and billing are active
 
 ---
 
 ## Phase 3 — TikTok Publishing
 
-- [ ] Create TikTok Developer account at developers.tiktok.com
-- [ ] Create TikTok app and obtain client key / client secret
-- [ ] Set `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` in `.env`
+- [x] Create TikTok Developer account at developers.tiktok.com
+- [x] Create TikTok app and obtain client key / client secret
+- [x] Set `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` in `.env`
 - [ ] Complete initial OAuth flow to obtain access + refresh tokens
 - [ ] Verify token storage is working (check `tokens.json` after first auth)
 
