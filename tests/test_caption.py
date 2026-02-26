@@ -43,10 +43,10 @@ class TestGenerateCaption:
 
     def test_passes_category_to_llm(self, mock_client):
         _, client = mock_client
-        generate_caption("A cozy cat prompt", category="cozy")
+        generate_caption("A funny cat prompt", category="funny")
         call_args = client.messages.create.call_args
         user_msg = call_args[1]["messages"][0]["content"]
-        assert "cozy" in user_msg
+        assert "funny" in user_msg
 
     def test_omits_category_when_none(self, mock_client):
         _, client = mock_client

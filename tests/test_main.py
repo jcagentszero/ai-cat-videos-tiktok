@@ -75,11 +75,12 @@ class TestMainCategory:
             yield
 
     def test_category_selects_prompt(self):
+        mock_pm = MagicMock()
+        mock_pm.consume_prompt.return_value = ("A funny cat prompt", "funny")
         with patch("sys.argv", ["main.py", "--dry-run", "--category", "funny"]):
-            with patch("prompts.cat_prompts.get_prompt_by_category",
-                       return_value="A funny cat prompt") as mock_get:
+            with patch("prompts.prompt_manager.PromptManager", return_value=mock_pm):
                 main()
-        mock_get.assert_called_once_with("funny")
+        mock_pm.consume_prompt.assert_called_once_with("funny")
         self.pipeline_instance.run.assert_called_once_with(
             prompt="A funny cat prompt",
         )
@@ -91,7 +92,7 @@ class TestMainCategory:
         assert exc_info.value.code == 1
 
     def test_prompt_and_category_mutually_exclusive(self):
-        with patch("sys.argv", ["main.py", "--prompt", "x", "--category", "cozy"]):
+        with patch("sys.argv", ["main.py", "--prompt", "x", "--category", "funny"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1

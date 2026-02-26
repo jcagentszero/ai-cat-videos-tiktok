@@ -30,7 +30,7 @@ def generate_caption(prompt: str, category: str | None = None) -> str:
 
     Args:
         prompt: The Veo generation prompt describing the video.
-        category: Optional category name (cozy, playful, dramatic, funny, cute).
+        category: Optional category name (funny, playful, cute).
 
     Returns:
         A short, engaging caption string.

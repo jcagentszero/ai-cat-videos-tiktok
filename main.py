@@ -22,7 +22,7 @@ from utils.logger import logger
 def parse_args():
     parser = argparse.ArgumentParser(description="AI Cat Videos → TikTok Pipeline")
     parser.add_argument("--prompt",   type=str,  default=None, help="Override generation prompt")
-    parser.add_argument("--category", type=str,  default=None, help="Prompt category: cozy|playful|dramatic|funny|cute")
+    parser.add_argument("--category", type=str,  default=None, help="Prompt category: funny|playful|cute")
     parser.add_argument("--dry-run",  action="store_true",      help="Generate video but skip posting")
     parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
@@ -88,13 +88,13 @@ def main():
 
     prompt = args.prompt
     if args.category:
-        from prompts.cat_prompts import CATEGORY_MAP
-        if args.category.lower() not in CATEGORY_MAP:
+        from prompts.prompt_manager import PromptManager, VALID_CATEGORIES
+        if args.category.lower() not in VALID_CATEGORIES:
             logger.error("Unknown category '{}'. Valid: {}",
-                         args.category, ", ".join(sorted(CATEGORY_MAP)))
+                         args.category, ", ".join(sorted(VALID_CATEGORIES)))
             sys.exit(1)
-        from prompts.cat_prompts import get_prompt_by_category
-        prompt = get_prompt_by_category(args.category)
+        pm = PromptManager()
+        prompt, _ = pm.consume_prompt(args.category.lower())
         logger.info("Selected prompt from category '{}'", args.category)
 
     from pipeline.runner import Pipeline

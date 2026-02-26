@@ -1,10 +1,27 @@
+import json
 import pytest
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from pipeline.runner import Pipeline
-from prompts.cat_prompts import ALL_PROMPTS, COZY, DRAMATIC, FUNNY, PLAYFUL
+
+
+SAMPLE_PROMPTS = {
+    "funny": ["A funny cat prompt 1", "A funny cat prompt 2"],
+    "playful": ["A playful cat prompt 1", "A playful cat prompt 2"],
+    "cute": ["A cute cat prompt 1", "A cute cat prompt 2"],
+}
+
+EMPTY_USED = {"funny": [], "playful": [], "cute": []}
+
+
+@pytest.fixture
+def prompt_files(tmp_path):
+    avail = tmp_path / "available.json"
+    used = tmp_path / "used.json"
+    avail.write_text(json.dumps(SAMPLE_PROMPTS))
+    used.write_text(json.dumps(EMPTY_USED))
+    return avail, used
 
 
 @pytest.fixture
@@ -29,210 +46,193 @@ def mock_storage(tmp_path):
 
 
 class TestPipelineInit:
-    def test_creates_storage(self, mock_veo, mock_tiktok, mock_storage):
-        cls, mgr = mock_storage
-        pipe = Pipeline(dry_run=False)
-        cls.assert_called_once()
-        assert pipe.storage is mgr
+    def test_creates_storage(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            cls, mgr = mock_storage
+            pipe = Pipeline(dry_run=False)
+            cls.assert_called_once()
+            assert pipe.storage is mgr
 
-    def test_creates_generator(self, mock_veo, mock_tiktok, mock_storage):
-        cls, gen = mock_veo
-        Pipeline(dry_run=False)
-        cls.assert_called_once()
+    def test_creates_generator(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            cls, gen = mock_veo
+            Pipeline(dry_run=False)
+            cls.assert_called_once()
 
-    def test_stores_generator(self, mock_veo, mock_tiktok, mock_storage):
-        _, gen = mock_veo
-        pipe = Pipeline(dry_run=False)
-        assert pipe.generator is gen
+    def test_stores_generator(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            _, gen = mock_veo
+            pipe = Pipeline(dry_run=False)
+            assert pipe.generator is gen
 
-    def test_creates_publisher_when_not_dry_run(self, mock_veo, mock_tiktok, mock_storage):
-        cls, pub = mock_tiktok
-        pipe = Pipeline(dry_run=False)
-        cls.assert_called_once()
-        assert pipe.publisher is pub
+    def test_creates_publisher_when_not_dry_run(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            cls, pub = mock_tiktok
+            pipe = Pipeline(dry_run=False)
+            cls.assert_called_once()
+            assert pipe.publisher is pub
 
-    def test_skips_publisher_when_dry_run(self, mock_veo, mock_tiktok, mock_storage):
-        cls, _ = mock_tiktok
-        pipe = Pipeline(dry_run=True)
-        cls.assert_not_called()
-        assert pipe.publisher is None
-
-    def test_dry_run_defaults_to_settings(self, mock_veo, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.settings.DRY_RUN", True):
-            pipe = Pipeline()
-        assert pipe.dry_run is True
-
-    def test_dry_run_false_default(self, mock_veo, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.settings.DRY_RUN", False):
-            pipe = Pipeline()
-        assert pipe.dry_run is False
-
-    def test_dry_run_explicit_overrides_settings(self, mock_veo, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.settings.DRY_RUN", False):
+    def test_skips_publisher_when_dry_run(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            cls, _ = mock_tiktok
             pipe = Pipeline(dry_run=True)
-        assert pipe.dry_run is True
+            cls.assert_not_called()
+            assert pipe.publisher is None
 
-    def test_raises_on_generator_failure(self, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.VeoGenerator", side_effect=RuntimeError("bad creds")):
-            with pytest.raises(RuntimeError, match="bad creds"):
-                Pipeline(dry_run=False)
+    def test_dry_run_defaults_to_settings(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.settings.DRY_RUN", True):
+                pipe = Pipeline()
+            assert pipe.dry_run is True
 
-    def test_raises_on_publisher_failure(self, mock_veo, mock_storage):
-        with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
-            with pytest.raises(RuntimeError, match="no token"):
-                Pipeline(dry_run=False)
+    def test_dry_run_false_default(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.settings.DRY_RUN", False):
+                pipe = Pipeline()
+            assert pipe.dry_run is False
 
-    def test_publisher_failure_skipped_in_dry_run(self, mock_veo, mock_storage):
-        with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
-            pipe = Pipeline(dry_run=True)
-        assert pipe.publisher is None
+    def test_dry_run_explicit_overrides_settings(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.settings.DRY_RUN", False):
+                pipe = Pipeline(dry_run=True)
+            assert pipe.dry_run is True
+
+    def test_raises_on_generator_failure(self, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.VeoGenerator", side_effect=RuntimeError("bad creds")):
+                with pytest.raises(RuntimeError, match="bad creds"):
+                    Pipeline(dry_run=False)
+
+    def test_raises_on_publisher_failure(self, mock_veo, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
+                with pytest.raises(RuntimeError, match="no token"):
+                    Pipeline(dry_run=False)
+
+    def test_publisher_failure_skipped_in_dry_run(self, mock_veo, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
+                pipe = Pipeline(dry_run=True)
+            assert pipe.publisher is None
 
 
 class TestSelectPrompt:
     @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        return Pipeline(dry_run=True)
+    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        avail, used = prompt_files
+        from prompts.prompt_manager import PromptManager
+        pm = PromptManager(available_path=avail, used_path=used)
+        with patch("pipeline.runner.PromptManager", return_value=pm):
+            pipe = Pipeline(dry_run=True)
+        return pipe
 
-    def test_returns_prompt_from_scheduled_category(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = []
-        # Wednesday = weekday 2 = "dramatic"
-        wed = datetime(2026, 2, 25, 12, 0)  # a Wednesday
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            prompt = pipe._select_prompt()
-        assert prompt in DRAMATIC
+    def test_returns_prompt_tuple(self, pipe):
+        result = pipe._select_prompt()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
 
-    def test_excludes_recently_used_prompts(self, pipe):
-        # Use all but one dramatic prompt as recent
-        pipe.storage.get_recent_prompts.return_value = DRAMATIC[:-1]
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            prompt = pipe._select_prompt()
-        assert prompt == DRAMATIC[-1]
+    def test_prompt_is_string(self, pipe):
+        prompt, category = pipe._select_prompt()
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
 
-    def test_falls_back_to_all_prompts_when_category_exhausted(self, pipe):
-        # All dramatic prompts used recently
-        pipe.storage.get_recent_prompts.return_value = list(DRAMATIC)
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            prompt = pipe._select_prompt()
-        assert prompt in ALL_PROMPTS
-        assert prompt not in DRAMATIC
+    def test_category_is_valid(self, pipe):
+        _, category = pipe._select_prompt()
+        assert category in ("funny", "playful", "cute")
 
-    def test_reuses_from_category_when_all_prompts_exhausted(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = list(ALL_PROMPTS)
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            prompt = pipe._select_prompt()
-        assert prompt in DRAMATIC
+    def test_consumes_prompt_from_available(self, pipe):
+        prompt, category = pipe._select_prompt()
+        counts = pipe.prompt_manager.get_available_count()
+        assert counts[category] == 1  # started with 2, now 1
 
-    def test_uses_correct_category_for_monday(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = []
-        mon = datetime(2026, 2, 23, 12, 0)  # a Monday
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = mon
-            prompt = pipe._select_prompt()
-        assert prompt in COZY
+    def test_consumed_prompt_appears_in_used(self, pipe):
+        prompt, category = pipe._select_prompt()
+        used = pipe.prompt_manager._used
+        used_prompts = [e["prompt"] for e in used[category]]
+        assert prompt in used_prompts
 
-    def test_uses_correct_category_for_tuesday(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = []
-        tue = datetime(2026, 2, 24, 12, 0)  # a Tuesday
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = tue
-            prompt = pipe._select_prompt()
-        assert prompt in PLAYFUL
+    def test_falls_back_when_category_exhausted(self, pipe):
+        # Exhaust the scheduled category
+        pipe.prompt_manager.consume_prompt()
+        pipe.prompt_manager.consume_prompt()
+        # There may still be prompts in other categories
+        # Should not raise since other categories have prompts
+        prompt, category = pipe._select_prompt()
+        assert isinstance(prompt, str)
 
-    def test_calls_get_recent_prompts(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = []
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
+    def test_raises_when_all_empty(self, pipe):
+        # Exhaust all categories
+        for _ in range(6):  # 2 per category × 3 categories
+            pipe.prompt_manager.consume_prompt()
+        with pytest.raises(RuntimeError, match="All prompt pools are empty"):
             pipe._select_prompt()
-        pipe.storage.get_recent_prompts.assert_called_once()
-
-    def test_always_returns_a_string(self, pipe):
-        pipe.storage.get_recent_prompts.return_value = []
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            result = pipe._select_prompt()
-        assert isinstance(result, str)
-        assert len(result) > 0
 
 
 class TestBuildCaption:
     @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        return Pipeline(dry_run=True)
+    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
+        with patch("pipeline.runner.PromptManager"):
+            return Pipeline(dry_run=True)
 
     def test_uses_llm_caption_when_available(self, pipe):
         with patch("pipeline.runner.generate_caption", return_value="living the dream"):
-            caption, _ = pipe._build_caption(COZY[0])
+            caption, _ = pipe._build_caption("A funny cat prompt 1", "funny")
         assert caption == "living the dream"
 
     def test_falls_back_to_first_clause_on_llm_failure(self, pipe):
-        prompt = COZY[0]
+        prompt = "A funny cat doing something, with lots of detail"
         with patch("pipeline.runner.generate_caption", side_effect=RuntimeError("no key")):
-            caption, _ = pipe._build_caption(prompt)
-        expected = prompt.split(",")[0].strip()
-        assert caption == expected
-
-    def test_fallback_caption_is_first_clause(self, pipe):
-        prompt = COZY[0]
-        caption, _ = pipe._build_caption(prompt)
+            caption, _ = pipe._build_caption(prompt, "funny")
         expected = prompt.split(",")[0].strip()
         assert caption == expected
 
     def test_passes_category_to_llm(self, pipe):
-        with patch("pipeline.runner.generate_caption", return_value="cozy vibes") as mock_gen:
-            pipe._build_caption(COZY[0])
-        mock_gen.assert_called_once_with(COZY[0], "cozy")
+        with patch("pipeline.runner.generate_caption", return_value="ha ha") as mock_gen:
+            pipe._build_caption("A funny cat prompt 1", "funny")
+        mock_gen.assert_called_once_with("A funny cat prompt 1", "funny")
 
     def test_passes_none_category_for_unknown_prompt(self, pipe):
         with patch("pipeline.runner.generate_caption", return_value="cat things") as mock_gen:
-            pipe._build_caption("A totally custom prompt, not in any list")
+            pipe._build_caption("A totally custom prompt, not in any list", None)
         mock_gen.assert_called_once_with("A totally custom prompt, not in any list", None)
 
     def test_returns_hashtag_list(self, pipe):
-        caption, hashtags = pipe._build_caption(COZY[0])
+        caption, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
         assert isinstance(hashtags, list)
         assert len(hashtags) > 0
         assert all(isinstance(h, str) for h in hashtags)
 
     def test_base_hashtags_always_present(self, pipe):
-        _, hashtags = pipe._build_caption(COZY[0])
+        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
         for tag in Pipeline.BASE_HASHTAGS:
             assert tag in hashtags
 
-    def test_cozy_prompt_gets_cozy_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption(COZY[0])
-        for tag in Pipeline.CATEGORY_HASHTAGS["cozy"]:
-            assert tag in hashtags
-
     def test_funny_prompt_gets_funny_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption(FUNNY[0])
+        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
         for tag in Pipeline.CATEGORY_HASHTAGS["funny"]:
             assert tag in hashtags
 
+    def test_cute_prompt_gets_cute_hashtags(self, pipe):
+        _, hashtags = pipe._build_caption("A cute cat prompt 1", "cute")
+        for tag in Pipeline.CATEGORY_HASHTAGS["cute"]:
+            assert tag in hashtags
+
     def test_unknown_prompt_gets_only_base_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption("A totally custom prompt, not in any list")
+        _, hashtags = pipe._build_caption("A totally custom prompt, not in any list", None)
         assert hashtags == list(Pipeline.BASE_HASHTAGS)
 
     def test_hashtags_do_not_contain_hash_symbol(self, pipe):
-        _, hashtags = pipe._build_caption(COZY[0])
+        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
         for tag in hashtags:
             assert not tag.startswith("#")
 
     def test_returns_tuple(self, pipe):
-        result = pipe._build_caption(DRAMATIC[0])
+        result = pipe._build_caption("A playful cat prompt 1", "playful")
         assert isinstance(result, tuple)
         assert len(result) == 2
 
     def test_caption_is_nonempty_string(self, pipe):
-        caption, _ = pipe._build_caption(PLAYFUL[0])
+        caption, _ = pipe._build_caption("A playful cat prompt 1", "playful")
         assert isinstance(caption, str)
         assert len(caption) > 0
 
@@ -244,7 +244,7 @@ class TestPipelineRun:
             yield
 
     @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
         _, gen = mock_veo
         gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
         _, pub = mock_tiktok
@@ -253,30 +253,30 @@ class TestPipelineRun:
             "status": "PUBLISH_COMPLETE",
             "video_path": "/fake/output/video_20260224_001.mp4",
         }
-        pipe = Pipeline(dry_run=False)
-        pipe.storage.get_recent_prompts.return_value = []
+        avail, used = prompt_files
+        from prompts.prompt_manager import PromptManager
+        pm = PromptManager(available_path=avail, used_path=used)
+        with patch("pipeline.runner.PromptManager", return_value=pm):
+            pipe = Pipeline(dry_run=False)
         return pipe
 
     @pytest.fixture
-    def dry_pipe(self, mock_veo, mock_tiktok, mock_storage):
+    def dry_pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
         _, gen = mock_veo
         gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
-        pipe = Pipeline(dry_run=True)
-        pipe.storage.get_recent_prompts.return_value = []
+        avail, used = prompt_files
+        from prompts.prompt_manager import PromptManager
+        pm = PromptManager(available_path=avail, used_path=used)
+        with patch("pipeline.runner.PromptManager", return_value=pm):
+            pipe = Pipeline(dry_run=True)
         return pipe
 
     def test_returns_dict(self, dry_pipe):
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            result = dry_pipe.run()
+        result = dry_pipe.run()
         assert isinstance(result, dict)
 
     def test_result_contains_required_keys(self, dry_pipe):
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            result = dry_pipe.run()
+        result = dry_pipe.run()
         for key in ("prompt", "video_path", "caption", "hashtags",
                     "publish_result", "status"):
             assert key in result
@@ -286,11 +286,11 @@ class TestPipelineRun:
         assert result["prompt"] == "A custom cat prompt"
 
     def test_selects_prompt_when_none_given(self, dry_pipe):
-        wed = datetime(2026, 2, 25, 12, 0)
-        with patch("pipeline.runner.datetime") as mock_dt:
-            mock_dt.now.return_value = wed
-            result = dry_pipe.run()
-        assert result["prompt"] in DRAMATIC
+        result = dry_pipe.run()
+        all_prompts = []
+        for prompts in SAMPLE_PROMPTS.values():
+            all_prompts.extend(prompts)
+        assert result["prompt"] in all_prompts
 
     def test_calls_generator(self, dry_pipe):
         dry_pipe.run(prompt="A cat on a couch")
@@ -378,7 +378,8 @@ class TestPipelineRun:
 class TestHandleError:
     @pytest.fixture
     def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        return Pipeline(dry_run=True)
+        with patch("pipeline.runner.PromptManager"):
+            return Pipeline(dry_run=True)
 
     def test_does_not_raise(self, pipe):
         pipe._handle_error("generate", ValueError("bad prompt"))
@@ -451,7 +452,8 @@ class TestHandleError:
 class TestSaveFailure:
     @pytest.fixture
     def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        return Pipeline(dry_run=True)
+        with patch("pipeline.runner.PromptManager"):
+            return Pipeline(dry_run=True)
 
     def test_saves_failure_record(self, pipe):
         pipe._save_failure("test prompt", Path("/fake/video.mp4"), RuntimeError("boom"))
@@ -479,8 +481,8 @@ class TestSaveFailure:
     def test_generate_failure_saves_record(self, mock_veo, mock_tiktok, mock_storage):
         _, gen = mock_veo
         gen.generate.side_effect = RuntimeError("veo down")
-        pipe = Pipeline(dry_run=True)
-        pipe.storage.get_recent_prompts.return_value = []
+        with patch("pipeline.runner.PromptManager"):
+            pipe = Pipeline(dry_run=True)
         with pytest.raises(RuntimeError, match="veo down"):
             pipe.run(prompt="A cat on a couch")
         save_calls = [
@@ -495,7 +497,8 @@ class TestSaveFailure:
         gen.generate.return_value = Path("/fake/video.mp4")
         _, pub = mock_tiktok
         pub.publish.side_effect = RuntimeError("upload failed")
-        pipe = Pipeline(dry_run=False)
+        with patch("pipeline.runner.PromptManager"):
+            pipe = Pipeline(dry_run=False)
         with patch("pipeline.runner.validate_video"):
             with pytest.raises(RuntimeError, match="upload failed"):
                 pipe.run(prompt="A cat on a couch")
@@ -512,8 +515,8 @@ class TestValidateVideoIntegration:
     def pipe(self, mock_veo, mock_tiktok, mock_storage):
         _, gen = mock_veo
         gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
-        pipe = Pipeline(dry_run=True)
-        pipe.storage.get_recent_prompts.return_value = []
+        with patch("pipeline.runner.PromptManager"):
+            pipe = Pipeline(dry_run=True)
         return pipe
 
     def test_validation_error_calls_handle_error_and_raises(self, pipe):

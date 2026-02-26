@@ -29,3 +29,5 @@ logs/
 credentials/
 *.json
 !config/example_*.json
+!prompts/available_prompts.json
+!prompts/used_prompts.json

@@ -10,10 +10,8 @@ Usage:
 
 """
 
-import random
 import smtplib
 import traceback
-from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -21,7 +19,7 @@ from config import settings
 from generators.caption import generate_caption
 from generators.veo import VeoGenerator
 from utils.video_validator import validate_video
-from prompts.cat_prompts import ALL_PROMPTS, CATEGORY_MAP, DAY_SCHEDULE
+from prompts.prompt_manager import PromptManager, DAY_SCHEDULE
 from publishers.tiktok import TikTokPublisher
 from storage.manager import StorageManager
 from utils.logger import logger
@@ -48,6 +46,7 @@ class Pipeline:
         try:
             self.storage = StorageManager()
             self.generator = VeoGenerator()
+            self.prompt_manager = PromptManager()
             self.publisher = None if self.dry_run else TikTokPublisher()
             logger.info(
                 "Pipeline initialized (dry_run={})", self.dry_run,
@@ -73,7 +72,9 @@ class Pipeline:
             # 1. Select prompt
             try:
                 if prompt is None:
-                    prompt = self._select_prompt()
+                    prompt, category = self._select_prompt()
+                else:
+                    category = self.prompt_manager.find_category(prompt)
                 logger.info("Pipeline run started with prompt: {!r}", prompt[:80])
             except Exception as e:
                 self._handle_error("select_prompt", e)
@@ -96,7 +97,7 @@ class Pipeline:
 
             # 4. Build caption and hashtags
             try:
-                caption, hashtags = self._build_caption(prompt)
+                caption, hashtags = self._build_caption(prompt, category)
             except Exception as e:
                 self._handle_error("build_caption", e)
                 raise
@@ -157,49 +158,18 @@ class Pipeline:
         except Exception as save_err:
             logger.debug("Could not save failure record: {}", save_err)
 
-    def _select_prompt(self) -> str:
-        recent = set(self.storage.get_recent_prompts())
-
-        day = datetime.now().weekday()
-        category_name = DAY_SCHEDULE[day]
-        pool = CATEGORY_MAP[category_name]
-
-        available = [p for p in pool if p not in recent]
-        if available:
-            prompt = random.choice(available)
-            logger.info("Selected prompt from '{}' ({} available)",
-                        category_name, len(available))
-            return prompt
-
-        all_available = [p for p in ALL_PROMPTS if p not in recent]
-        if all_available:
-            prompt = random.choice(all_available)
-            logger.info("Category '{}' exhausted, fell back to all prompts "
-                        "({} available)", category_name, len(all_available))
-            return prompt
-
-        prompt = random.choice(pool)
-        logger.warning("All prompts used recently, reusing from '{}'",
-                       category_name)
-        return prompt
+    def _select_prompt(self) -> tuple[str, str]:
+        return self.prompt_manager.consume_prompt()
 
     BASE_HASHTAGS = ["catvideos", "catsoftiktok", "aiart", "aigenerated"]
 
     CATEGORY_HASHTAGS = {
-        "cozy": ["cozycat", "sleepycat", "catlover"],
         "playful": ["playfulcat", "kitten", "catplay"],
-        "dramatic": ["cinematic", "catmood", "aesthetic"],
         "funny": ["funnycat", "catmemes", "catsbeingcats"],
         "cute": ["cutecat", "kittenlife", "adorable"],
     }
 
-    def _build_caption(self, prompt: str) -> tuple[str, list[str]]:
-        category = None
-        for name, prompts in CATEGORY_MAP.items():
-            if prompt in prompts:
-                category = name
-                break
-
+    def _build_caption(self, prompt: str, category: str | None = None) -> tuple[str, list[str]]:
         try:
             caption = generate_caption(prompt, category)
         except Exception as exc:

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from generators.veo import VeoGenerator
-from prompts.cat_prompts import get_random_prompt
+from prompts.prompt_manager import PromptManager
 
 
 _SKIP_REASON = (
@@ -37,7 +37,8 @@ class TestVeoSmoke:
     def test_generate_produces_valid_mp4(self, tmp_path):
         with patch("config.settings.OUTPUT_DIR", tmp_path):
             gen = VeoGenerator()
-            prompt = get_random_prompt()
+            pm = PromptManager()
+            prompt, _ = pm.consume_prompt()
             result = gen.generate(prompt)
 
         assert result.exists(), f"Generated file does not exist: {result}"
