@@ -32,8 +32,6 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟢 Phase 6 — Quality & Extras
 
-- [ ] Multi-platform scaffold — add publishers/instagram.py and publishers/youtube_shorts.py as empty stubs for future expansion <!-- files: publishers/ -->
-
 ---
 
 ## ✅ Done
@@ -77,4 +75,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] LLM-generated captions — call Claude/GPT to write unique captions per video instead of static text <!-- files: pipeline/runner.py -->
 - [x] Add video validation step — confirm MP4 is non-corrupt and meets TikTok size/duration limits before upload <!-- files: pipeline/runner.py -->
 - [x] Add TikTok analytics fetching — pull view/like counts 24h after posting, log to run history <!-- files: publishers/tiktok.py, storage/manager.py -->
+- [x] Multi-platform scaffold — add publishers/instagram.py and publishers/youtube_shorts.py as empty stubs for future expansion <!-- files: publishers/ -->
 <!-- Completed tasks moved here -->
