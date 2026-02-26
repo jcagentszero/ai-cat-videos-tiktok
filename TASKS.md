@@ -16,6 +16,8 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ## 🟡 Phase 2 — Video Generation (Veo 3)
 
+- [ ] Migrate video generation from Google Vertex (Veo 3) to Kie.ai — cheaper per-video cost <!-- files: generators/veo.py, config/settings.py, tests/test_veo.py, tests/test_veo_smoke.py -->
+
 ---
 
 ## 🟡 Phase 3 — TikTok Publishing

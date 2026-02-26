@@ -141,6 +141,7 @@ class VeoGenerator:
                 number_of_videos=1,
                 duration_seconds=duration_seconds,
                 aspect_ratio="9:16",
+                resolution="720p",
                 generate_audio=True,
             ),
         )
