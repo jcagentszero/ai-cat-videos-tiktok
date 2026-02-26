@@ -141,7 +141,7 @@ class VeoGenerator:
                 number_of_videos=1,
                 duration_seconds=duration_seconds,
                 aspect_ratio="9:16",
-                resolution="4k",
+                resolution="720p",
                 generate_audio=True,
             ),
         )
@@ -171,9 +171,9 @@ class VeoGenerator:
         elapsed = time.monotonic() - start
 
         if operation.error:
-            raise RuntimeError(
-                f"Veo generation failed: {operation.error.message}"
-            )
+            err = operation.error
+            msg = err.get("message", str(err)) if isinstance(err, dict) else getattr(err, "message", str(err))
+            raise RuntimeError(f"Veo generation failed: {msg}")
 
         generated_videos = operation.result.generated_videos
         if not generated_videos:
