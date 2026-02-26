@@ -21,6 +21,7 @@ from pathlib import Path
 from config import settings
 from generators.caption import generate_caption
 from generators.veo import VeoGenerator
+from utils.video_validator import validate_video
 from prompts.cat_prompts import ALL_PROMPTS, CATEGORY_MAP, DAY_SCHEDULE
 from publishers.tiktok import TikTokPublisher
 from storage.manager import StorageManager
@@ -88,14 +89,21 @@ class Pipeline:
                 self._handle_error("generate", e)
                 raise
 
-            # 3. Build caption and hashtags
+            # 3. Validate video
+            try:
+                validate_video(video_path)
+            except Exception as e:
+                self._handle_error("validate_video", e)
+                raise
+
+            # 4. Build caption and hashtags
             try:
                 caption, hashtags = self._build_caption(prompt)
             except Exception as e:
                 self._handle_error("build_caption", e)
                 raise
 
-            # 4. Publish (skip if dry_run)
+            # 5. Publish (skip if dry_run)
             publish_result = None
             if self.dry_run:
                 logger.info(
@@ -117,7 +125,7 @@ class Pipeline:
             self._save_failure(prompt, video_path, e)
             raise
 
-        # 5. Save run record (only reached on success)
+        # 6. Save run record (only reached on success)
         result = {
             "prompt": prompt,
             "video_path": str(video_path),

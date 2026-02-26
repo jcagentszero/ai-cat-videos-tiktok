@@ -238,6 +238,11 @@ class TestBuildCaption:
 
 
 class TestPipelineRun:
+    @pytest.fixture(autouse=True)
+    def mock_validate(self):
+        with patch("pipeline.runner.validate_video"):
+            yield
+
     @pytest.fixture
     def pipe(self, mock_veo, mock_tiktok, mock_storage):
         _, gen = mock_veo
@@ -491,11 +496,52 @@ class TestSaveFailure:
         _, pub = mock_tiktok
         pub.publish.side_effect = RuntimeError("upload failed")
         pipe = Pipeline(dry_run=False)
-        with pytest.raises(RuntimeError, match="upload failed"):
-            pipe.run(prompt="A cat on a couch")
+        with patch("pipeline.runner.validate_video"):
+            with pytest.raises(RuntimeError, match="upload failed"):
+                pipe.run(prompt="A cat on a couch")
         save_calls = [
             c for c in pipe.storage.save_run.call_args_list
             if c[0][2].get("status") == "failed"
         ]
         assert len(save_calls) == 1
         assert save_calls[0][0][2]["video_path"] == "/fake/video.mp4"
+
+
+class TestValidateVideoIntegration:
+    @pytest.fixture
+    def pipe(self, mock_veo, mock_tiktok, mock_storage):
+        _, gen = mock_veo
+        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
+        pipe = Pipeline(dry_run=True)
+        pipe.storage.get_recent_prompts.return_value = []
+        return pipe
+
+    def test_validation_error_calls_handle_error_and_raises(self, pipe):
+        from utils.video_validator import VideoValidationError
+        with patch("pipeline.runner.validate_video",
+                   side_effect=VideoValidationError("corrupt")):
+            with patch.object(pipe, "_handle_error") as mock_handle:
+                with pytest.raises(VideoValidationError, match="corrupt"):
+                    pipe.run(prompt="A cat on a couch")
+        mock_handle.assert_called_once()
+        assert mock_handle.call_args[0][0] == "validate_video"
+
+    def test_validation_error_saves_failure_record(self, pipe):
+        from utils.video_validator import VideoValidationError
+        with patch("pipeline.runner.validate_video",
+                   side_effect=VideoValidationError("bad mp4")):
+            with pytest.raises(VideoValidationError):
+                pipe.run(prompt="A cat on a couch")
+        save_calls = [
+            c for c in pipe.storage.save_run.call_args_list
+            if c[0][2].get("status") == "failed"
+        ]
+        assert len(save_calls) == 1
+        assert "VideoValidationError" in save_calls[0][0][2]["error"]
+
+    def test_validate_video_called_with_generated_path(self, pipe):
+        with patch("pipeline.runner.validate_video") as mock_val:
+            pipe.run(prompt="A cat on a couch")
+        mock_val.assert_called_once_with(
+            Path("/fake/output/video_20260224_001.mp4"),
+        )
