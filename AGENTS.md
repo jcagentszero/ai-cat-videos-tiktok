@@ -35,6 +35,7 @@ python -m pytest tests/ -v
 - **Generators**: `generators/veo.py` — Veo 3 video generation (Google Cloud AI)
 - **Captions**: `generators/caption.py` — LLM-powered caption generation (Anthropic Claude)
 - **Publishers**: `publishers/tiktok.py` — TikTok Content Posting API
+- **Publishers (stubs)**: `publishers/instagram.py`, `publishers/youtube_shorts.py` — future platform stubs (NotImplementedError)
 - **Pipeline**: `pipeline/runner.py` — orchestrates generate -> store -> publish
 - **Storage**: `storage/manager.py` — local file management and run history
 - **Prompts**: `prompts/cat_prompts.py` — prompt library for cat video generation
