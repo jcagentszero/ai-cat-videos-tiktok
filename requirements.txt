@@ -17,6 +17,9 @@ requests==2.32.5
 # Scheduling
 APScheduler==3.10.4
 
+# Caption generation (LLM)
+anthropic>=0.39.0
+
 # Utilities
 loguru==0.7.2         # structured logging
 tenacity==9.0.0       # retry logic

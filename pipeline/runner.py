@@ -19,6 +19,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from config import settings
+from generators.caption import generate_caption
 from generators.veo import VeoGenerator
 from prompts.cat_prompts import ALL_PROMPTS, CATEGORY_MAP, DAY_SCHEDULE
 from publishers.tiktok import TikTokPublisher
@@ -187,13 +188,17 @@ class Pipeline:
     }
 
     def _build_caption(self, prompt: str) -> tuple[str, list[str]]:
-        caption = prompt.split(",")[0].strip()
-
         category = None
         for name, prompts in CATEGORY_MAP.items():
             if prompt in prompts:
                 category = name
                 break
+
+        try:
+            caption = generate_caption(prompt, category)
+        except Exception as exc:
+            logger.warning("LLM caption failed, using fallback: {}", exc)
+            caption = prompt.split(",")[0].strip()
 
         hashtags = list(self.BASE_HASHTAGS)
         if category:

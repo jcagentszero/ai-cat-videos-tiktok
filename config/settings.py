@@ -32,6 +32,10 @@ TIKTOK_REFRESH_TOKEN = os.getenv("TIKTOK_REFRESH_TOKEN", "")
 TIKTOK_OPEN_ID       = os.getenv("TIKTOK_OPEN_ID", "")
 TOKEN_FILE           = CREDS_DIR / "tiktok_tokens.json"
 
+# ── Caption LLM (Anthropic Claude) ───────────────────────────────────────────
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CAPTION_MODEL     = os.getenv("CAPTION_MODEL", "claude-haiku-4-5-20251001")
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 VIDEOS_PER_RUN           = int(os.getenv("VIDEOS_PER_RUN", "1"))
 DRY_RUN                  = os.getenv("DRY_RUN", "false").lower() == "true"

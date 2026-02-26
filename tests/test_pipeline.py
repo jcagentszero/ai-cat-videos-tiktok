@@ -168,11 +168,33 @@ class TestBuildCaption:
     def pipe(self, mock_veo, mock_tiktok, mock_storage):
         return Pipeline(dry_run=True)
 
-    def test_caption_is_first_clause_of_prompt(self, pipe):
+    def test_uses_llm_caption_when_available(self, pipe):
+        with patch("pipeline.runner.generate_caption", return_value="living the dream"):
+            caption, _ = pipe._build_caption(COZY[0])
+        assert caption == "living the dream"
+
+    def test_falls_back_to_first_clause_on_llm_failure(self, pipe):
+        prompt = COZY[0]
+        with patch("pipeline.runner.generate_caption", side_effect=RuntimeError("no key")):
+            caption, _ = pipe._build_caption(prompt)
+        expected = prompt.split(",")[0].strip()
+        assert caption == expected
+
+    def test_fallback_caption_is_first_clause(self, pipe):
         prompt = COZY[0]
         caption, _ = pipe._build_caption(prompt)
         expected = prompt.split(",")[0].strip()
         assert caption == expected
+
+    def test_passes_category_to_llm(self, pipe):
+        with patch("pipeline.runner.generate_caption", return_value="cozy vibes") as mock_gen:
+            pipe._build_caption(COZY[0])
+        mock_gen.assert_called_once_with(COZY[0], "cozy")
+
+    def test_passes_none_category_for_unknown_prompt(self, pipe):
+        with patch("pipeline.runner.generate_caption", return_value="cat things") as mock_gen:
+            pipe._build_caption("A totally custom prompt, not in any list")
+        mock_gen.assert_called_once_with("A totally custom prompt, not in any list", None)
 
     def test_returns_hashtag_list(self, pipe):
         caption, hashtags = pipe._build_caption(COZY[0])

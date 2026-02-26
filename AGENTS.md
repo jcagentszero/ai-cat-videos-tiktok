@@ -33,6 +33,7 @@ python -m pytest tests/ -v
 
 - **Config**: `config/settings.py` — env-based configuration via python-dotenv
 - **Generators**: `generators/veo.py` — Veo 3 video generation (Google Cloud AI)
+- **Captions**: `generators/caption.py` — LLM-powered caption generation (Anthropic Claude)
 - **Publishers**: `publishers/tiktok.py` — TikTok Content Posting API
 - **Pipeline**: `pipeline/runner.py` — orchestrates generate -> store -> publish
 - **Storage**: `storage/manager.py` — local file management and run history
@@ -60,3 +61,4 @@ python -m pytest tests/ -v
 - Smoke tests (`pytest -m smoke`) hit real APIs and require GCP credentials; unit tests auto-skip them
 - TikTok OAuth: `python main.py --auth` or `python -m publishers.oauth`; requires `http://localhost:8080/callback` registered as redirect URI in TikTok app settings
 - TikTok API has no separate "publish" endpoint — `post_info` (caption, privacy) goes in the same `/v2/post/publish/video/init/` call as `source_info`; use `_create_post` (not `_init_upload`) for direct posting
+- **Caption LLM**: `generators/caption.py` uses Anthropic Claude; falls back to first-comma-clause if `ANTHROPIC_API_KEY` not set; default model is `claude-haiku-4-5-20251001`
