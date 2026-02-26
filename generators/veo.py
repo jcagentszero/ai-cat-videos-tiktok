@@ -19,7 +19,6 @@ SDK: google-genai (import google.genai)
   - client.operations.get(operation)  — poll until operation.done
   - video.video.save("out.mp4")  — download result
 
-TODO: implement
 """
 
 import time
@@ -76,7 +75,8 @@ class VeoGenerator:
     def __init__(self):
         try:
             credentials = service_account.Credentials.from_service_account_file(
-                settings.GCP_CREDENTIALS
+                settings.GCP_CREDENTIALS,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
             self._credentials = credentials
             self.client = genai.Client(
@@ -105,11 +105,6 @@ class VeoGenerator:
         Returns:
             Path to the downloaded video file in output/.
 
-        TODO:
-          1. Submit generation request to Veo 3 endpoint
-          2. Poll job status until complete or timeout
-          3. Download video to settings.OUTPUT_DIR / <unique_filename>.mp4
-          4. Return the path
         """
         logger.info(
             "Starting video generation (duration={}s) for prompt: {!r}",
@@ -119,14 +114,22 @@ class VeoGenerator:
         operation = self._submit_job(prompt, duration_seconds)
 
         logger.info("Veo job submitted, polling for completion")
-        gcs_uri = self._poll_job(operation)
+        video = self._poll_job(operation)
 
         dest = settings.OUTPUT_DIR / "video_{}.mp4".format(
             datetime.now().strftime("%Y%m%d_%H%M%S")
         )
-        self._download_video(gcs_uri, dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Video generation complete: {}", dest)
+        # Try GCS download if URI is available, otherwise use SDK save method
+        gcs_uri = video.video.uri if video.video else None
+        if gcs_uri:
+            self._download_video(gcs_uri, dest)
+        else:
+            logger.info("No GCS URI, saving video via SDK save()")
+            video.video.save(str(dest))
+
+        logger.info("Video generation complete: {} ({} bytes)", dest, dest.stat().st_size)
         return dest
 
     @_api_retry
@@ -178,7 +181,7 @@ class VeoGenerator:
             )
 
         logger.info("Veo job completed in {:.1f}s", elapsed)
-        return generated_videos[0].video.uri
+        return generated_videos[0]
 
     @_api_retry
     def _poll_once(self, operation):

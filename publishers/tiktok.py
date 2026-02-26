@@ -14,7 +14,6 @@ API reference:
   https://developers.tiktok.com/doc/content-posting-api-get-started
   Scopes required: video.upload, video.publish
 
-TODO: implement
 """
 
 import time

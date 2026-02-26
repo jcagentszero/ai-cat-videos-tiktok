@@ -8,7 +8,6 @@ Usage:
   from pipeline.runner import Pipeline
   Pipeline().run()
 
-TODO: implement
 """
 
 import random
@@ -41,7 +40,6 @@ class Pipeline:
       6. Publish to TikTok (unless DRY_RUN=true)
       7. Log result and notify
 
-    TODO: implement each step
     """
 
     def __init__(self, dry_run=None):

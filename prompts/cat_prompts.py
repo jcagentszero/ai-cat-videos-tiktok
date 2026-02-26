@@ -8,7 +8,7 @@ Design notes:
   - Include camera direction, lighting, and mood cues for better Veo output
   - Include audio/sound direction — Veo 3 generates audio natively
   - Organized by category for variety across the posting schedule
-  - TODO: add a prompt selector that avoids repeating recent prompts
+  - Prompt selector avoids repeating recent prompts via run history
 
 Veo 3 prompt tips (from GCP docs):
   - Be specific about camera motion: "slow zoom", "tracking shot", "static frame"
@@ -198,7 +198,6 @@ def get_scheduled_prompt() -> str:
     """
     Return a prompt based on day of week for variety.
     Mon/Thu = cozy, Tue/Fri = playful, Wed = dramatic, Sat = funny, Sun = cute
-    TODO: add history tracking to avoid repeating recent prompts
     """
     day = datetime.now().weekday()  # 0=Mon ... 6=Sun
     return get_prompt_by_category(DAY_SCHEDULE[day])

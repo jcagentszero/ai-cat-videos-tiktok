@@ -9,7 +9,6 @@ Responsibilities:
   - Provide history lookup to avoid duplicate prompts
   - Clean up old videos to manage disk space
 
-TODO: implement
 """
 
 import json
