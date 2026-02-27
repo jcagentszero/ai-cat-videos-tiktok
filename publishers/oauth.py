@@ -12,6 +12,8 @@ Usage:
   python main.py --auth               # run via main entry point
 """
 
+import base64
+import hashlib
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
@@ -38,24 +40,35 @@ def _redirect_uri():
     return f"http://{REDIRECT_HOST}:{REDIRECT_PORT}{REDIRECT_PATH}"
 
 
-def build_auth_url(state):
+def _generate_pkce():
+    """Generate PKCE code_verifier and code_challenge (S256)."""
+    verifier = secrets.token_urlsafe(64)[:128]
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
+def build_auth_url(state, code_challenge):
     params = {
         "client_key": settings.TIKTOK_CLIENT_KEY,
         "scope": SCOPES,
         "response_type": "code",
         "redirect_uri": _redirect_uri(),
         "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
 
-def exchange_code(code):
+def exchange_code(code, code_verifier):
     payload = {
         "client_key": settings.TIKTOK_CLIENT_KEY,
         "client_secret": settings.TIKTOK_CLIENT_SECRET,
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": _redirect_uri(),
+        "code_verifier": code_verifier,
     }
     resp = requests.post(TOKEN_URL, data=payload, timeout=30)
     resp.raise_for_status()
@@ -111,7 +124,8 @@ def run_oauth_flow():
         )
 
     state = secrets.token_urlsafe(32)
-    auth_url = build_auth_url(state)
+    code_verifier, code_challenge = _generate_pkce()
+    auth_url = build_auth_url(state, code_challenge)
 
     server = HTTPServer((REDIRECT_HOST, REDIRECT_PORT), _CallbackHandler)
     server.callback_params = {}
@@ -157,7 +171,7 @@ def run_oauth_flow():
     code = params["code"][0]
     logger.info("Authorization code received, exchanging for tokens...")
 
-    token_data = exchange_code(code)
+    token_data = exchange_code(code, code_verifier)
 
     access_token = token_data["access_token"]
     refresh_token = token_data["refresh_token"]
