@@ -16,7 +16,6 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from config import settings
-from generators.caption import generate_caption
 from generators.veo import VeoGenerator
 from utils.video_validator import validate_video
 from prompts.prompt_manager import PromptManager, DAY_SCHEDULE
@@ -172,11 +171,7 @@ class Pipeline:
     }
 
     def _build_caption(self, prompt: str, category: str | None = None) -> tuple[str, list[str]]:
-        try:
-            caption = generate_caption(prompt, category)
-        except Exception as exc:
-            logger.warning("LLM caption failed, using fallback: {}", exc)
-            caption = prompt.split(",")[0].strip()
+        caption = prompt.split(",")[0].strip()
 
         hashtags = list(self.BASE_HASHTAGS)
         if category:

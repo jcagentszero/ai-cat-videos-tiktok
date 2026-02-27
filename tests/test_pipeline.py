@@ -174,27 +174,15 @@ class TestBuildCaption:
         with patch("pipeline.runner.PromptManager"):
             return Pipeline(dry_run=True)
 
-    def test_uses_llm_caption_when_available(self, pipe):
-        with patch("pipeline.runner.generate_caption", return_value="living the dream"):
-            caption, _ = pipe._build_caption("A funny cat prompt 1", "funny")
-        assert caption == "living the dream"
+    def test_caption_uses_first_clause(self, pipe):
+        prompt = "A funny cat doing something, with lots of detail, and more"
+        caption, _ = pipe._build_caption(prompt, "funny")
+        assert caption == "A funny cat doing something"
 
-    def test_falls_back_to_first_clause_on_llm_failure(self, pipe):
-        prompt = "A funny cat doing something, with lots of detail"
-        with patch("pipeline.runner.generate_caption", side_effect=RuntimeError("no key")):
-            caption, _ = pipe._build_caption(prompt, "funny")
-        expected = prompt.split(",")[0].strip()
-        assert caption == expected
-
-    def test_passes_category_to_llm(self, pipe):
-        with patch("pipeline.runner.generate_caption", return_value="ha ha") as mock_gen:
-            pipe._build_caption("A funny cat prompt 1", "funny")
-        mock_gen.assert_called_once_with("A funny cat prompt 1", "funny")
-
-    def test_passes_none_category_for_unknown_prompt(self, pipe):
-        with patch("pipeline.runner.generate_caption", return_value="cat things") as mock_gen:
-            pipe._build_caption("A totally custom prompt, not in any list", None)
-        mock_gen.assert_called_once_with("A totally custom prompt, not in any list", None)
+    def test_caption_handles_no_comma(self, pipe):
+        prompt = "A funny cat doing something"
+        caption, _ = pipe._build_caption(prompt, "funny")
+        assert caption == prompt
 
     def test_returns_hashtag_list(self, pipe):
         caption, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
