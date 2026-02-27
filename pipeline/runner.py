@@ -159,6 +159,8 @@ class Pipeline:
             logger.debug("Could not save failure record: {}", save_err)
 
     def _select_prompt(self) -> tuple[str, str]:
+        if self.dry_run:
+            return self.prompt_manager.peek_prompt()
         return self.prompt_manager.consume_prompt()
 
     BASE_HASHTAGS = ["catvideos", "catsoftiktok", "aiart", "aigenerated"]

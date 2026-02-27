@@ -101,7 +101,10 @@ def main():
                          args.category, ", ".join(sorted(VALID_CATEGORIES)))
             sys.exit(1)
         pm = PromptManager()
-        prompt, _ = pm.consume_prompt(args.category.lower())
+        if args.dry_run:
+            prompt, _ = pm.peek_prompt(args.category.lower())
+        else:
+            prompt, _ = pm.consume_prompt(args.category.lower())
         logger.info("Selected prompt from category '{}'", args.category)
 
     from pipeline.runner import Pipeline

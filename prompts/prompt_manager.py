@@ -114,6 +114,27 @@ class PromptManager:
         )
         return prompt, category
 
+    def peek_prompt(self, category: str | None = None) -> tuple[str, str]:
+        """Pick a random prompt without consuming it (for dry runs).
+
+        Same selection logic as consume_prompt but does not modify pools.
+        """
+        with self._lock:
+            if category is None:
+                day = datetime.now().weekday()
+                category = DAY_SCHEDULE[day]
+
+            if self._available.get(category):
+                prompt = random.choice(self._available[category])
+                return prompt, category
+
+            for fallback in VALID_CATEGORIES:
+                if self._available.get(fallback):
+                    prompt = random.choice(self._available[fallback])
+                    return prompt, fallback
+
+            raise RuntimeError("All prompt pools are empty")
+
     def find_category(self, prompt: str) -> str | None:
         """Reverse-lookup category for a prompt across both pools."""
         for cat in VALID_CATEGORIES:
