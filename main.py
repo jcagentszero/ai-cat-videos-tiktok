@@ -10,6 +10,7 @@ Usage:
   python main.py --category funny # use a specific prompt category
   python main.py --digest         # print daily run summary
   python main.py --analytics      # fetch TikTok analytics for recent posts
+  python main.py --sandbox        # use TikTok sandbox credentials
 """
 
 import argparse
@@ -29,11 +30,17 @@ def parse_args():
     parser.add_argument("--schedule", action="store_true",      help="Run as daemon on POST_SCHEDULE_CRON schedule")
     parser.add_argument("--digest",   action="store_true",      help="Print daily run summary digest")
     parser.add_argument("--analytics", action="store_true",     help="Fetch TikTok analytics for recent posts")
+    parser.add_argument("--sandbox",   action="store_true",     help="Use TikTok sandbox credentials")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if args.sandbox:
+        from config.settings import activate_sandbox
+        activate_sandbox()
+        logger.info("Using TikTok sandbox credentials")
 
     if args.auth:
         from publishers.oauth import run_oauth_flow

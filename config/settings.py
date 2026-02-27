@@ -32,6 +32,19 @@ TIKTOK_REFRESH_TOKEN = os.getenv("TIKTOK_REFRESH_TOKEN", "")
 TIKTOK_OPEN_ID       = os.getenv("TIKTOK_OPEN_ID", "")
 TOKEN_FILE           = CREDS_DIR / "tiktok_tokens.json"
 
+# ── TikTok Sandbox ───────────────────────────────────────────────────────────
+TIKTOK_SANDBOX_CLIENT_KEY    = os.getenv("TIKTOK_SANDBOX_CLIENT_KEY", "")
+TIKTOK_SANDBOX_CLIENT_SECRET = os.getenv("TIKTOK_SANDBOX_CLIENT_SECRET", "")
+TIKTOK_SANDBOX_TOKEN_FILE    = CREDS_DIR / "tiktok_sandbox_tokens.json"
+
+
+def activate_sandbox():
+    """Swap TikTok credentials to sandbox values."""
+    mod = sys.modules[__name__]
+    mod.TIKTOK_CLIENT_KEY = mod.TIKTOK_SANDBOX_CLIENT_KEY
+    mod.TIKTOK_CLIENT_SECRET = mod.TIKTOK_SANDBOX_CLIENT_SECRET
+    mod.TOKEN_FILE = mod.TIKTOK_SANDBOX_TOKEN_FILE
+
 # ── Caption LLM (Anthropic Claude) ───────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CAPTION_MODEL     = os.getenv("CAPTION_MODEL", "claude-haiku-4-5-20251001")
