@@ -36,6 +36,7 @@ TOKEN_FILE           = CREDS_DIR / "tiktok_tokens.json"
 TIKTOK_SANDBOX_CLIENT_KEY    = os.getenv("TIKTOK_SANDBOX_CLIENT_KEY", "")
 TIKTOK_SANDBOX_CLIENT_SECRET = os.getenv("TIKTOK_SANDBOX_CLIENT_SECRET", "")
 TIKTOK_SANDBOX_TOKEN_FILE    = CREDS_DIR / "tiktok_sandbox_tokens.json"
+TIKTOK_SANDBOX               = False
 
 
 def activate_sandbox():
@@ -44,6 +45,7 @@ def activate_sandbox():
     mod.TIKTOK_CLIENT_KEY = mod.TIKTOK_SANDBOX_CLIENT_KEY
     mod.TIKTOK_CLIENT_SECRET = mod.TIKTOK_SANDBOX_CLIENT_SECRET
     mod.TOKEN_FILE = mod.TIKTOK_SANDBOX_TOKEN_FILE
+    mod.TIKTOK_SANDBOX = True
 
 # ── Caption LLM (Anthropic Claude) ───────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

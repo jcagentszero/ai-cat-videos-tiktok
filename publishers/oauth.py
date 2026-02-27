@@ -12,7 +12,6 @@ Usage:
   python main.py --auth               # run via main entry point
 """
 
-import base64
 import hashlib
 import secrets
 import threading
@@ -32,7 +31,8 @@ TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 REDIRECT_HOST = "localhost"
 REDIRECT_PORT = 8080
 REDIRECT_PATH = "/callback"
-SCOPES = "user.info.basic,video.upload,video.publish"
+SCOPES_PRODUCTION = "user.info.basic,video.upload,video.publish"
+SCOPES_SANDBOX = "user.info.basic,video.upload"
 CALLBACK_TIMEOUT = 120
 
 
@@ -41,17 +41,26 @@ def _redirect_uri():
 
 
 def _generate_pkce():
-    """Generate PKCE code_verifier and code_challenge (S256)."""
-    verifier = secrets.token_urlsafe(64)[:128]
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    """Generate PKCE code_verifier and code_challenge (S256).
+
+    TikTok uses hex-encoded SHA256 for code_challenge (not base64url).
+    See: https://developers.tiktok.com/doc/login-kit-desktop/
+    """
+    charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    verifier = "".join(secrets.choice(charset) for _ in range(64))
+    challenge = hashlib.sha256(verifier.encode("ascii")).hexdigest()
     return verifier, challenge
+
+
+def _scopes():
+    """Return the appropriate OAuth scopes for sandbox vs production."""
+    return SCOPES_SANDBOX if settings.TIKTOK_SANDBOX else SCOPES_PRODUCTION
 
 
 def build_auth_url(state, code_challenge):
     params = {
         "client_key": settings.TIKTOK_CLIENT_KEY,
-        "scope": SCOPES,
+        "scope": _scopes(),
         "response_type": "code",
         "redirect_uri": _redirect_uri(),
         "state": state,
@@ -137,6 +146,7 @@ def run_oauth_flow():
         "Starting OAuth callback server on http://{}:{}",
         REDIRECT_HOST, REDIRECT_PORT,
     )
+    logger.info("Requesting scopes: {}", _scopes())
     logger.info("Opening browser for TikTok authorization...")
     webbrowser.open(auth_url)
 
