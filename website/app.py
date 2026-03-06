@@ -1,6 +1,11 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, send_from_directory
 
 app = Flask(__name__)
+
+
+@app.route("/tiktokmYW5VHluS2PcrCxUS646CWf1TCNmsqzG.txt")
+def tiktok_verification():
+    return "tiktok-developers-site-verification=mYW5VHluS2PcrCxUS646CWf1TCNmsqzG", 200, {"Content-Type": "text/plain"}
 
 
 @app.route("/")
