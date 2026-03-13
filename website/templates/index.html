@@ -9,6 +9,17 @@
         Kitties4Lyfe creates adorable, funny AI-generated cat videos and publishes them
         directly to TikTok. Sit back, relax, and let the kitties do the work.
     </p>
+    {% if not session.get('access_token') %}
+    <a href="/login"
+       style="display: inline-block; background: linear-gradient(135deg, #ff6b9d, #c44dff); color: white; text-decoration: none; padding: 0.75rem 2rem; border-radius: 6px; font-size: 1.1rem; font-weight: 600;">
+        Login with TikTok
+    </a>
+    {% else %}
+    <a href="/dashboard"
+       style="display: inline-block; background: linear-gradient(135deg, #ff6b9d, #c44dff); color: white; text-decoration: none; padding: 0.75rem 2rem; border-radius: 6px; font-size: 1.1rem; font-weight: 600;">
+        Go to Dashboard
+    </a>
+    {% endif %}
 </div>
 
 <h2>How It Works</h2>

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Kitties4Lyfe{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.6rem;">Welcome, {{ user_info.display_name or "TikTok User" }}</h2>
+    <div style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
+        {% if user_info.avatar_url %}
+        <img src="{{ user_info.avatar_url }}" alt="Avatar"
+             style="width: 64px; height: 64px; border-radius: 50%;">
+        {% endif %}
+        <div>
+            <p style="margin: 0; color: #666;">Open ID: <code>{{ user_info.open_id }}</code></p>
+        </div>
+    </div>
+</div>
+
+<h2>Upload a Video</h2>
+<form action="/upload" method="post" enctype="multipart/form-data"
+      style="background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem;">
+    <div style="margin-bottom: 1rem;">
+        <label for="video" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Video File (MP4)</label>
+        <input type="file" id="video" name="video" accept="video/mp4" required
+               style="display: block; width: 100%;">
+    </div>
+    <div style="margin-bottom: 1rem;">
+        <label for="caption" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Caption</label>
+        <input type="text" id="caption" name="caption" maxlength="150"
+               placeholder="Enter a caption for your video"
+               style="display: block; width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+    </div>
+    <button type="submit"
+            style="background: linear-gradient(135deg, #ff6b9d, #c44dff); color: white; border: none; padding: 0.75rem 2rem; border-radius: 6px; font-size: 1rem; cursor: pointer;">
+        Upload to TikTok
+    </button>
+</form>
+
+{% if uploads %}
+<h2>Upload History</h2>
+<div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <thead>
+            <tr style="border-bottom: 2px solid #eee;">
+                <th style="padding: 0.75rem; text-align: left;">Publish ID</th>
+                <th style="padding: 0.75rem; text-align: left;">Caption</th>
+                <th style="padding: 0.75rem; text-align: left;">Status</th>
+                <th style="padding: 0.75rem; text-align: left;">Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for upload in uploads %}
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 0.75rem;"><code>{{ upload.publish_id[:16] }}...</code></td>
+                <td style="padding: 0.75rem;">{{ upload.caption }}</td>
+                <td style="padding: 0.75rem;">{{ upload.status }}</td>
+                <td style="padding: 0.75rem;">{{ upload.timestamp }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
