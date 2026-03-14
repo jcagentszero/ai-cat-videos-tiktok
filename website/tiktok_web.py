@@ -144,7 +144,7 @@ def upload_video_bytes(upload_url, video_bytes):
     """PUT video bytes to the TikTok upload URL."""
     file_size = len(video_bytes)
     headers = {
-        "Content-Type": "video/mp4",
+        "Content-Type": "application/octet-stream",
         "Content-Length": str(file_size),
         "Content-Range": f"bytes 0-{file_size - 1}/{file_size}",
     }
