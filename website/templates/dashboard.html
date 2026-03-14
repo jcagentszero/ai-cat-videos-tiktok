@@ -3,6 +3,11 @@
 {% block title %}Dashboard — Kitties4Lyfe{% endblock %}
 
 {% block content %}
+{% if error %}
+<div style="background: #fee; border: 1px solid #fcc; color: #c00; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+    {{ error }}
+</div>
+{% endif %}
 <div style="margin-bottom: 2rem;">
     <h2 style="font-size: 1.6rem;">Welcome, {{ user_info.display_name or "TikTok User" }}</h2>
     <div style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
