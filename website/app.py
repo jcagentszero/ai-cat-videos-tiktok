@@ -22,7 +22,7 @@ TIKTOK_CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET", "")
 def _redirect_uri():
     """Build the OAuth redirect URI from the current request host."""
     scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
-    return f"{scheme}://{request.host}/callback"
+    return f"{scheme}://{request.host}/callback/"
 
 
 # ── Existing routes (unchanged) ──────────────────────────────────────────────
@@ -63,7 +63,7 @@ def login():
     return redirect(auth_url)
 
 
-@app.route("/callback")
+@app.route("/callback/")
 def callback():
     error = request.args.get("error")
     if error:
