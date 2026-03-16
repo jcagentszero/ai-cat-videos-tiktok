@@ -37,6 +37,11 @@ def tiktok_verification_sandbox():
     return "tiktok-developers-site-verification=zgEZ8oajoOWVPxDE3XxJ9fKK8qbEQ9Gi", 200, {"Content-Type": "text/plain"}
 
 
+@app.route("/tiktok3v9RZTWkDnYHjyKexRIGZRjadZ64RbZH.txt")
+def tiktok_verification_sandbox2():
+    return "tiktok-developers-site-verification=3v9RZTWkDnYHjyKexRIGZRjadZ64RbZH", 200, {"Content-Type": "text/plain"}
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
