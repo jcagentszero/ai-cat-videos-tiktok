@@ -23,3 +23,4 @@ anthropic>=0.39.0
 # Utilities
 loguru==0.7.2         # structured logging
 tenacity==9.0.0       # retry logic
+pyyaml>=6.0        # script frontmatter parsing
