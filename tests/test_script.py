@@ -56,6 +56,20 @@ class TestParseScript:
         with pytest.raises(ValueError, match=r"noshots\.md.*[Ss]hot"):
             parse_script(bad)
 
+    def test_production_notes_do_not_leak_into_last_shot(self, tmp_path):
+        md = SAMPLE_SCRIPT_MD.replace(
+            "## Production notes\n\n- Generate shots as separate clips and stitch.\n",
+            "## Production notes\n\n"
+            "> leaked blockquote line\n\n"
+            "- **Audio:** leaked audio\n",
+        )
+        assert "leaked" in md  # guard: replacement actually happened
+        path = tmp_path / "leaky.md"
+        path.write_text(md)
+        last = parse_script(path).shots[-1]
+        assert "leaked" not in last.description
+        assert last.audio == "Horror-movie string stab."
+
     def test_script_is_frozen(self, script_file):
         s = parse_script(script_file)
         with pytest.raises(Exception):
