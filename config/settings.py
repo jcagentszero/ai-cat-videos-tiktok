@@ -24,6 +24,20 @@ GCP_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 VEO_MODEL       = os.getenv("VEO_MODEL", "veo-3.1-fast-generate-001")
 VEO_REGION      = os.getenv("VEO_REGION", "us-central1")
 
+# ── Agent Opus ────────────────────────────────────────────────────────────────
+OPUS_API_KEY       = os.getenv("OPUS_API_KEY", "")
+OPUS_API_BASE      = os.getenv("OPUS_API_BASE", "https://api.opus.pro/api")
+OPUS_POLL_TIMEOUT  = int(os.getenv("OPUS_POLL_TIMEOUT", "1800"))
+OPUS_POLL_INTERVAL = int(os.getenv("OPUS_POLL_INTERVAL", "15"))
+# Escape hatch: pre-registered dashboard asset IDs, comma-separated.
+# When set, reference photo upload is skipped entirely.
+OPUS_REFERENCE_ASSET_IDS = tuple(
+    x.strip() for x in os.getenv("OPUS_REFERENCE_ASSET_IDS", "").split(",") if x.strip()
+)
+
+# ── Reference photos (Nika) ──────────────────────────────────────────────────
+REFERENCE_PHOTOS_DIR = ROOT_DIR / os.getenv("REFERENCE_PHOTOS_DIR", "reference/nika")
+
 # ── TikTok ────────────────────────────────────────────────────────────────────
 TIKTOK_CLIENT_KEY    = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
@@ -67,23 +81,22 @@ ANALYTICS_DELAY_HOURS = int(os.getenv("ANALYTICS_DELAY_HOURS", "24"))
 # ── Validation ────────────────────────────────────────────────────────────────
 
 _REQUIRED = {
-    "GOOGLE_CLOUD_PROJECT_ID": "GCP_PROJECT_ID",
-    "GOOGLE_APPLICATION_CREDENTIALS": "GCP_CREDENTIALS",
     "TIKTOK_CLIENT_KEY": "TIKTOK_CLIENT_KEY",
     "TIKTOK_CLIENT_SECRET": "TIKTOK_CLIENT_SECRET",
+    "OPUS_API_KEY": "OPUS_API_KEY",
 }
 
-_GCP_VARS = {"GOOGLE_CLOUD_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"}
 _TIKTOK_VARS = {"TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"}
+_OPUS_VARS = {"OPUS_API_KEY"}
 
 
 def validate_config(*, dry_run=False):
     """Raise ValueError if any required setting is missing.
 
-    In dry-run mode, only GCP vars are required (TikTok is skipped).
+    OPUS_API_KEY is always required; TikTok vars are skipped in dry-run mode.
     """
     mod = sys.modules[__name__]
-    required = _GCP_VARS if dry_run else _GCP_VARS | _TIKTOK_VARS
+    required = _OPUS_VARS if dry_run else _OPUS_VARS | _TIKTOK_VARS
     missing = [
         env_name for env_name in sorted(required)
         if not getattr(mod, _REQUIRED[env_name], "")
