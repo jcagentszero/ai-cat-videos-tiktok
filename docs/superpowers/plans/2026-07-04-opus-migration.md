@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Swap the video backend from Google Veo to the Agent Opus API (Veo kept as degraded fallback), driven by full multi-shot scripts starring "Nika" (Exotic Shorthair, Grumpy Cat 2.0 persona) with reference photos for character consistency.
+**Goal:** Replace Google Veo with the Agent Opus API as the sole video backend (Veo and the legacy one-line prompt system are fully removed), driven by full multi-shot scripts starring "Nika" (Exotic Shorthair, Grumpy Cat 2.0 persona) with reference photos for character consistency.
 
-**Architecture:** The pipeline's generator is duck-typed (`.generate(...) -> Path`), so we introduce a `VideoGenerator` Protocol + factory selected by `VIDEO_BACKEND`. One-line prompt pools are replaced by a pool of Markdown scripts with YAML frontmatter, consumed via atomic file moves. All Agent Opus API knowledge is confined to `generators/opus_client.py` — its endpoint path constants are the only code the Phase 0 spike adjusts.
+**Architecture:** The pipeline instantiates `OpusGenerator` directly (single backend — no factory). One-line prompt pools are replaced by a pool of Markdown scripts with YAML frontmatter, consumed via atomic file moves. All Agent Opus API knowledge is confined to `generators/opus_client.py` — its endpoint path constants are the only code the Phase 0 spike adjusts. AMENDMENT 2026-07-04: user opted to remove Veo now rather than keep it as fallback; the pipeline is intentionally down until the Opus spike succeeds. Task 8 is the removal task and executes AFTER Tasks 9–10 (so imports never dangle); execution order is 1,2,3,4,5,6,7,9,10,8.
 
 **Tech Stack:** Python 3.14, requests, tenacity, pyyaml (new), pytest with unittest.mock.
 
@@ -15,14 +15,14 @@
 - Files 200–400 lines typical; functions <50 lines; explicit error handling; validate at boundaries.
 - No hardcoded secrets. All config via `config/settings.py` + `.env` (never `os.environ` elsewhere).
 - Tests never hit real APIs — mock at the HTTP/client boundary (convention: `tests/test_tiktok.py`).
-- Conventional commits (`feat:`, `fix:`, `test:`, `refactor:`). Push after every commit.
-- `generators/veo.py` is NOT modified in any task.
+- Conventional commits (`feat:`, `fix:`, `test:`, `refactor:`). Push after every commit (a pre-push hook runs the full pytest suite — every commit must leave the suite green).
+- `generators/veo.py` is not modified by Tasks 1–7 and 9–10; it is DELETED (with its tests and the legacy prompt system) in Task 8, which executes last.
 - Run tests with: `.venv/bin/python -m pytest` (repo venv, Python 3.14).
 - Endpoint paths in `generators/opus_client.py` marked "Provisional — Phase 0 spike" are expected to change once `specs/opus-api-notes.md` exists; tests reference the constants, not literal paths, so spike edits don't break them.
 
 ---
 
-### Task 1: Settings — backend flag, Opus vars, reference photos dir
+### Task 1: Settings — Agent Opus vars, opus-only validation, reference photos dir
 
 **Files:**
 - Modify: `config/settings.py`
@@ -31,60 +31,11 @@
 
 **Interfaces:**
 - Consumes: nothing (foundation task)
-- Produces: `settings.VIDEO_BACKEND: str` ("veo"|"opus", default "veo"), `settings.OPUS_API_KEY: str`, `settings.OPUS_API_BASE: str`, `settings.OPUS_POLL_TIMEOUT: int`, `settings.OPUS_POLL_INTERVAL: int`, `settings.OPUS_REFERENCE_ASSET_IDS: tuple[str, ...]`, `settings.REFERENCE_PHOTOS_DIR: Path`, `validate_config(*, dry_run=False)` branching by backend.
+- Produces: `settings.OPUS_API_KEY: str`, `settings.OPUS_API_BASE: str`, `settings.OPUS_POLL_TIMEOUT: int`, `settings.OPUS_POLL_INTERVAL: int`, `settings.OPUS_REFERENCE_ASSET_IDS: tuple[str, ...]`, `settings.REFERENCE_PHOTOS_DIR: Path`, `validate_config(*, dry_run=False)` requiring OPUS_API_KEY (+ TikTok vars unless dry-run). GCP vars are NO LONGER required (the GCP/VEO constants themselves stay in the file until Task 8 deletes them — `generators/veo.py` and its tests still reference them until then).
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/test_config.py` (note: `_patch_vars` already exists at the top of the file — extend its defaults with `VIDEO_BACKEND="veo"` and `OPUS_API_KEY=""` is NOT needed; patch per-test instead):
-
-```python
-class TestValidateConfigBackends:
-    def test_opus_backend_requires_opus_key(self):
-        with _patch_vars(VIDEO_BACKEND="opus", OPUS_API_KEY=""):
-            with pytest.raises(ValueError, match="OPUS_API_KEY"):
-                validate_config()
-
-    def test_opus_backend_with_key_passes(self):
-        with _patch_vars(VIDEO_BACKEND="opus", OPUS_API_KEY="ok_test"):
-            validate_config()
-
-    def test_opus_backend_skips_gcp_vars(self):
-        with _patch_vars(
-            VIDEO_BACKEND="opus", OPUS_API_KEY="ok_test",
-            GCP_PROJECT_ID="", GCP_CREDENTIALS="",
-        ):
-            validate_config()
-
-    def test_veo_backend_still_requires_gcp(self):
-        with _patch_vars(VIDEO_BACKEND="veo", GCP_PROJECT_ID=""):
-            with pytest.raises(ValueError, match="GOOGLE_CLOUD_PROJECT_ID"):
-                validate_config()
-
-    def test_invalid_backend_raises(self):
-        with _patch_vars(VIDEO_BACKEND="banana"):
-            with pytest.raises(ValueError, match="VIDEO_BACKEND"):
-                validate_config()
-
-    def test_opus_dry_run_skips_tiktok(self):
-        with _patch_vars(
-            VIDEO_BACKEND="opus", OPUS_API_KEY="ok_test",
-            TIKTOK_CLIENT_KEY="", TIKTOK_CLIENT_SECRET="",
-        ):
-            validate_config(dry_run=True)
-
-
-class TestNewSettings:
-    def test_video_backend_defaults_to_veo(self):
-        assert settings.VIDEO_BACKEND in ("veo", "opus")
-
-    def test_reference_photos_dir_under_root(self):
-        assert settings.ROOT_DIR in settings.REFERENCE_PHOTOS_DIR.parents
-
-    def test_opus_reference_asset_ids_is_tuple(self):
-        assert isinstance(settings.OPUS_REFERENCE_ASSET_IDS, tuple)
-```
-
-Also update the existing `_patch_vars` helper so the new attribute exists in defaults:
+In `tests/test_config.py`, update the `_patch_vars` helper defaults and REPLACE the GCP-requirement tests (the contract genuinely changed: Opus is the only backend, so `validate_config` no longer requires GCP vars — state this in the commit message):
 
 ```python
 def _patch_vars(**overrides):
@@ -93,26 +44,61 @@ def _patch_vars(**overrides):
         "GCP_CREDENTIALS": "/path/to/creds.json",
         "TIKTOK_CLIENT_KEY": "key123",
         "TIKTOK_CLIENT_SECRET": "secret456",
-        "VIDEO_BACKEND": "veo",
-        "OPUS_API_KEY": "",
+        "OPUS_API_KEY": "ok_test",
     }
     defaults.update(overrides)
     return patch.multiple(settings, **defaults)
 ```
 
+Delete `test_missing_gcp_project_raises` and `test_missing_gcp_credentials_raises` (validate_config no longer checks GCP). Keep the TikTok tests and `test_all_vars_set_passes` / `test_dry_run_skips_tiktok_vars` / `test_multiple_missing_lists_all` — but update `test_multiple_missing_lists_all` to use OPUS + TikTok vars:
+
+```python
+    def test_multiple_missing_lists_all(self):
+        with _patch_vars(OPUS_API_KEY="", TIKTOK_CLIENT_KEY=""):
+            with pytest.raises(ValueError, match="OPUS_API_KEY.*TIKTOK_CLIENT_KEY"):
+                validate_config()
+```
+
+Append:
+
+```python
+class TestValidateConfigOpus:
+    def test_missing_opus_key_raises(self):
+        with _patch_vars(OPUS_API_KEY=""):
+            with pytest.raises(ValueError, match="OPUS_API_KEY"):
+                validate_config()
+
+    def test_gcp_vars_no_longer_required(self):
+        with _patch_vars(GCP_PROJECT_ID="", GCP_CREDENTIALS=""):
+            validate_config()
+
+    def test_dry_run_still_requires_opus_key(self):
+        with _patch_vars(OPUS_API_KEY=""):
+            with pytest.raises(ValueError, match="OPUS_API_KEY"):
+                validate_config(dry_run=True)
+
+
+class TestNewSettings:
+    def test_reference_photos_dir_under_root(self):
+        assert settings.ROOT_DIR in settings.REFERENCE_PHOTOS_DIR.parents
+
+    def test_opus_reference_asset_ids_is_tuple(self):
+        assert isinstance(settings.OPUS_REFERENCE_ASSET_IDS, tuple)
+
+    def test_opus_api_base_default(self):
+        assert settings.OPUS_API_BASE.startswith("https://")
+```
+
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_config.py -v`
-Expected: FAIL — `AttributeError: ... does not have the attribute 'VIDEO_BACKEND'`
+Expected: FAIL — `AttributeError: ... does not have the attribute 'OPUS_API_KEY'`
 
 - [ ] **Step 3: Implement settings changes**
 
-In `config/settings.py`, insert after the `# ── Google Cloud / Veo 3` block (line 25):
+In `config/settings.py`, insert after the `# ── Google Cloud / Veo 3` block (line 25) — do NOT remove the GCP/VEO constants yet (Task 8 does that; veo.py still reads them):
 
 ```python
-# ── Video backend ────────────────────────────────────────────────────────────
-VIDEO_BACKEND = os.getenv("VIDEO_BACKEND", "veo").lower()
-
 # ── Agent Opus ────────────────────────────────────────────────────────────────
 OPUS_API_KEY       = os.getenv("OPUS_API_KEY", "")
 OPUS_API_BASE      = os.getenv("OPUS_API_BASE", "https://api.opus.pro/api")
@@ -132,14 +118,11 @@ Replace the validation section (lines 69–96) with:
 
 ```python
 _REQUIRED = {
-    "GOOGLE_CLOUD_PROJECT_ID": "GCP_PROJECT_ID",
-    "GOOGLE_APPLICATION_CREDENTIALS": "GCP_CREDENTIALS",
     "TIKTOK_CLIENT_KEY": "TIKTOK_CLIENT_KEY",
     "TIKTOK_CLIENT_SECRET": "TIKTOK_CLIENT_SECRET",
     "OPUS_API_KEY": "OPUS_API_KEY",
 }
 
-_GCP_VARS = {"GOOGLE_CLOUD_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"}
 _TIKTOK_VARS = {"TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"}
 _OPUS_VARS = {"OPUS_API_KEY"}
 
@@ -147,18 +130,10 @@ _OPUS_VARS = {"OPUS_API_KEY"}
 def validate_config(*, dry_run=False):
     """Raise ValueError if any required setting is missing.
 
-    Backend vars depend on VIDEO_BACKEND (opus → OPUS_API_KEY, veo → GCP vars).
-    In dry-run mode, TikTok vars are skipped.
+    OPUS_API_KEY is always required; TikTok vars are skipped in dry-run mode.
     """
     mod = sys.modules[__name__]
-
-    if mod.VIDEO_BACKEND not in ("veo", "opus"):
-        raise ValueError(
-            f"Invalid VIDEO_BACKEND {mod.VIDEO_BACKEND!r}: must be 'veo' or 'opus'."
-        )
-
-    backend_vars = _OPUS_VARS if mod.VIDEO_BACKEND == "opus" else _GCP_VARS
-    required = backend_vars if dry_run else backend_vars | _TIKTOK_VARS
+    required = _OPUS_VARS if dry_run else _OPUS_VARS | _TIKTOK_VARS
     missing = [
         env_name for env_name in sorted(required)
         if not getattr(mod, _REQUIRED[env_name], "")
@@ -174,10 +149,7 @@ def validate_config(*, dry_run=False):
 Append to `.env.example`:
 
 ```bash
-# ── Video backend: "veo" (default) or "opus" ─────────────
-VIDEO_BACKEND=veo
-
-# ── Agent Opus (required when VIDEO_BACKEND=opus) ────────
+# ── Agent Opus (video generation backend) ────────────────
 OPUS_API_KEY=
 OPUS_API_BASE=https://api.opus.pro/api
 OPUS_POLL_TIMEOUT=1800
@@ -192,13 +164,13 @@ REFERENCE_PHOTOS_DIR=reference/nika
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_config.py -v`
-Expected: ALL PASS (including pre-existing tests — the veo default keeps old behavior)
+Expected: ALL PASS. Then run the full non-smoke suite (`.venv/bin/python -m pytest -m "not smoke" -q`) — must stay green (veo tests untouched: GCP constants still exist).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add config/settings.py .env.example tests/test_config.py
-git commit -m "feat: add VIDEO_BACKEND flag, Agent Opus settings, reference photos dir"
+git commit -m "feat: add Agent Opus settings; validate_config requires OPUS_API_KEY instead of GCP vars (Opus is now the sole backend)"
 git push
 ```
 
@@ -1051,12 +1023,7 @@ class ScriptManager:
 
 Create empty `prompts/scripts/available/.gitkeep` and `prompts/scripts/used/.gitkeep`.
 
-In `prompts/prompt_manager.py`, add to the end of the module docstring (line 10, before the closing `"""`):
-
-```
-DEPRECATED: one-line prompts are replaced by full scripts (prompts/script_manager.py).
-This module remains only for the legacy veo prompt path and is removed in Phase 6.
-```
+Do not touch `prompts/prompt_manager.py` — it is deleted wholesale in Task 8.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1661,145 +1628,55 @@ git push
 
 ---
 
-### Task 8: Backend factory + VeoAdapter
+### Task 8: Remove Veo, legacy prompt system, and Google dependencies
+
+**EXECUTE THIS TASK LAST — after Tasks 9 and 10** (they remove the last imports of the code deleted here).
 
 **Files:**
-- Create: `generators/factory.py`
-- Test: `tests/test_factory.py`
+- Delete: `generators/veo.py`, `tests/test_veo.py`, `tests/test_veo_smoke.py`
+- Delete: `prompts/prompt_manager.py`, `prompts/available_prompts.json`, `prompts/used_prompts.json`, `tests/test_prompt_manager.py`
+- Modify: `config/settings.py` (remove GCP/Veo constants), `.env.example` (remove GCP/Veo vars), `requirements.txt` (remove Google deps)
 
 **Interfaces:**
-- Consumes: `OpusGenerator` (Task 7), `VeoGenerator` (existing, unmodified), `Script` (Task 4), `inject_persona` (Task 2), `settings.VIDEO_BACKEND` (Task 1)
-- Produces: `VideoGenerator` Protocol (`generate(script: Script, reference_photos: Sequence[Path]) -> Path`), `create_generator(backend: str | None = None) -> VideoGenerator`, `VeoAdapter` (degraded fallback).
+- Consumes: Tasks 9 and 10 already removed all runtime imports of `VeoGenerator` and `PromptManager`.
+- Produces: nothing new — pure removal. Suite must stay green.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Verify nothing still imports the doomed modules**
 
-Create `tests/test_factory.py`:
+Run: `grep -rn "from generators.veo\|import veo\|prompt_manager\|VeoGenerator\|PromptManager" --include="*.py" . | grep -v ".venv\|__pycache__\|test_veo\|test_prompt_manager"`
+Expected: no hits outside the files being deleted. If there are hits, STOP and report BLOCKED with the list.
 
-```python
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from generators.factory import VeoAdapter, create_generator
-from prompts.script import parse_script
-
-
-class TestCreateGenerator:
-    def test_opus_backend(self):
-        with patch("generators.opus.OpusClient"):
-            gen = create_generator("opus")
-        from generators.opus import OpusGenerator
-        assert isinstance(gen, OpusGenerator)
-
-    def test_veo_backend(self):
-        with patch("generators.veo.VeoGenerator") as veo_cls:
-            gen = create_generator("veo")
-        assert isinstance(gen, VeoAdapter)
-        veo_cls.assert_called_once()
-
-    def test_default_uses_settings(self):
-        with patch("config.settings.VIDEO_BACKEND", "opus"), \
-             patch("generators.opus.OpusClient"):
-            from generators.opus import OpusGenerator
-            assert isinstance(create_generator(), OpusGenerator)
-
-    def test_unknown_backend_raises(self):
-        with pytest.raises(ValueError, match="banana"):
-            create_generator("banana")
-
-
-class TestVeoAdapter:
-    def test_degraded_mode_uses_shot_one(self, script_file):
-        script = parse_script(script_file)
-        with patch("generators.veo.VeoGenerator") as veo_cls:
-            veo = MagicMock()
-            veo_cls.return_value = veo
-            adapter = create_generator("veo")
-            adapter.generate(script, ())
-        prompt = veo.generate.call_args[0][0]
-        assert "lying on its back" in prompt        # shot 1 description
-        assert "[CAT]" not in prompt                # persona injected
-        assert veo.generate.call_args[1]["duration_seconds"] == 8
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `.venv/bin/python -m pytest tests/test_factory.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'generators.factory'`
-
-- [ ] **Step 3: Implement**
-
-Create `generators/factory.py`:
-
-```python
-"""
-generators/factory.py
-─────────────────────
-Video backend selection. The pipeline depends only on the VideoGenerator
-Protocol; concrete backends are chosen by settings.VIDEO_BACKEND.
-"""
-
-from pathlib import Path
-from typing import Protocol, Sequence
-
-from config import settings
-from characters.persona import inject_persona
-from prompts.script import Script
-from utils.logger import logger
-
-
-class VideoGenerator(Protocol):
-    def generate(self, script: Script, reference_photos: Sequence[Path]) -> Path: ...
-
-
-def create_generator(backend: str | None = None) -> VideoGenerator:
-    """Instantiate the configured video backend. Raises ValueError on unknown."""
-    backend = (backend or settings.VIDEO_BACKEND).lower()
-    if backend == "opus":
-        from generators.opus import OpusGenerator
-        return OpusGenerator()
-    if backend == "veo":
-        return VeoAdapter()
-    raise ValueError(
-        f"Unknown VIDEO_BACKEND {backend!r}: must be 'opus' or 'veo'"
-    )
-
-
-class VeoAdapter:
-    """Degraded-mode fallback: renders only shot 1 as a single 8s Veo clip.
-
-    Veo cannot consume multi-shot scripts or reference photos. This adapter
-    exists for pipeline continuity if Agent Opus is unavailable — not for
-    quality parity.
-    """
-
-    def __init__(self):
-        from generators.veo import VeoGenerator
-        self._veo = VeoGenerator()
-
-    def generate(self, script: Script, reference_photos: Sequence[Path]) -> Path:
-        logger.warning(
-            "VeoAdapter degraded mode: rendering only shot 1 of '{}' as an "
-            "8s clip; reference photos ignored", script.id,
-        )
-        prompt = inject_persona(script.shots[0].description)
-        return self._veo.generate(prompt, duration_seconds=8)
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `.venv/bin/python -m pytest tests/test_factory.py -v`
-Expected: ALL PASS
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Delete the files**
 
 ```bash
-git add generators/factory.py tests/test_factory.py
-git commit -m "feat: add video backend factory with VeoAdapter degraded fallback"
-git push
+git rm generators/veo.py tests/test_veo.py tests/test_veo_smoke.py
+git rm prompts/prompt_manager.py prompts/available_prompts.json prompts/used_prompts.json tests/test_prompt_manager.py
 ```
 
----
+- [ ] **Step 3: Strip settings**
+
+In `config/settings.py`: delete the `# ── Google Cloud / Veo 3` block (`GCP_PROJECT_ID`, `GCP_CREDENTIALS`, `VEO_MODEL`, `VEO_REGION`). `_REQUIRED`/`validate_config` were already cleaned in Task 1 — verify no `_GCP_VARS` remnant.
+
+In `.env.example`: remove the GCP/Veo lines (`GOOGLE_CLOUD_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS`, `VEO_MODEL`, `VEO_REGION`).
+
+In `tests/test_config.py`: remove `GCP_PROJECT_ID`/`GCP_CREDENTIALS` from `_patch_vars` defaults and delete `test_gcp_vars_no_longer_required` (the attributes it patches no longer exist).
+
+- [ ] **Step 4: Strip Google deps from requirements.txt**
+
+First verify nothing else imports them: `grep -rn "google" --include="*.py" . | grep -v ".venv\|__pycache__"` — expect no hits after Step 2. Then remove from `requirements.txt`: `google-genai`, `google-auth`, `google-cloud-storage` (and the `# Google Cloud / Veo 3` header). Do NOT pip-uninstall from the venv (harmless, avoids churn).
+
+- [ ] **Step 5: Full suite green**
+
+Run: `.venv/bin/python -m pytest -m "not smoke" -q`
+Expected: ALL PASS, no import errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: remove Veo backend, legacy prompt pools, and Google Cloud dependencies"
+git push
+```
 
 ### Task 9: Pipeline integration
 
@@ -1808,7 +1685,7 @@ git push
 - Test: `tests/test_pipeline.py` (full rewrite)
 
 **Interfaces:**
-- Consumes: `create_generator` (Task 8), `ScriptManager` (Task 5), `load_reference_photos` (Task 3), `NIKA` (Task 2), existing `validate_video`, `TikTokPublisher`, `StorageManager`
+- Consumes: `OpusGenerator` (Task 7 — instantiated directly, Opus is the sole backend), `ScriptManager` (Task 5), `load_reference_photos` (Task 3), `NIKA` (Task 2), existing `validate_video`, `TikTokPublisher`, `StorageManager`
 - Produces: `Pipeline(dry_run=None)` with `run(script_id: str | None = None) -> dict`. Result dict keys: `prompt` (= script.title, backward compat for storage/digest), `script_id`, `title`, `video_path`, `caption`, `hashtags`, `publish_result`, `status`.
 
 - [ ] **Step 1: Rewrite the test file (failing)**
@@ -1834,8 +1711,8 @@ def sample_script(script_file):
 def mock_generator():
     gen = MagicMock()
     gen.generate.return_value = Path("/tmp/video.mp4")
-    with patch("pipeline.runner.create_generator", return_value=gen) as factory:
-        yield factory, gen
+    with patch("pipeline.runner.OpusGenerator", return_value=gen) as cls:
+        yield cls, gen
 
 
 @pytest.fixture
@@ -1881,10 +1758,10 @@ ALL = ("mock_generator", "mock_scripts", "mock_photos",
 
 @pytest.mark.usefixtures(*ALL)
 class TestPipelineInit:
-    def test_uses_factory(self, mock_generator):
-        factory, gen = mock_generator
+    def test_creates_opus_generator(self, mock_generator):
+        cls, gen = mock_generator
         pipe = Pipeline(dry_run=False)
-        factory.assert_called_once()
+        cls.assert_called_once()
         assert pipe.generator is gen
 
     def test_dry_run_skips_publisher(self):
@@ -1951,7 +1828,7 @@ class TestBuildCaption:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_pipeline.py -v`
-Expected: FAIL — `ImportError: cannot import name 'create_generator' from 'pipeline.runner'` (or AttributeError on patch targets)
+Expected: FAIL — `AttributeError: <module 'pipeline.runner'> does not have the attribute 'OpusGenerator'` (or similar on patch targets)
 
 - [ ] **Step 3: Rewrite pipeline/runner.py**
 
@@ -1960,7 +1837,7 @@ Replace the imports block (lines 18–24) with:
 ```python
 from config import settings
 from characters.persona import NIKA
-from generators.factory import create_generator
+from generators.opus import OpusGenerator
 from prompts.script import Script
 from prompts.script_manager import ScriptManager
 from publishers.tiktok import TikTokPublisher
@@ -1974,7 +1851,7 @@ Replace `__init__` body's manager lines (lines 46–49) with:
 
 ```python
             self.storage = StorageManager()
-            self.generator = create_generator()
+            self.generator = OpusGenerator()
             self.script_manager = ScriptManager()
             self.publisher = None if self.dry_run else TikTokPublisher()
 ```
@@ -2247,7 +2124,7 @@ git push
 
 ## Post-plan work (separate sessions, not in this plan)
 
-- **Phase 0 spike** (user-gated): probe Agent Opus API with real key → write `specs/opus-api-notes.md` → adjust `UPLOAD_PATH`/`GENERATE_PATH`/`JOB_PATH` constants and payload field names in `generators/opus_client.py` → run `tests/test_opus_smoke.py`.
-- **Phase 5**: convert 4 existing `scripts/*.md` to frontmatter format; build `tools/generate_seed_scripts.py`; human review gate.
-- **Phase 6**: specs rewrite, README, flip `VIDEO_BACKEND` default to `opus`, delete deprecated `prompt_manager.py` + JSON pools.
+- **Phase 0 spike** (user-gated): probe Agent Opus API with real key → write `specs/opus-api-notes.md` → adjust `UPLOAD_PATH`/`GENERATE_PATH`/`JOB_PATH` constants and payload field names in `generators/opus_client.py` → run `tests/test_opus_smoke.py`. NOTE: with Veo removed, the pipeline is down until this succeeds.
+- **Phase 5**: convert 4 existing `scripts/*.md` to frontmatter format; build `tools/generate_seed_scripts.py` (curate from the git history of the deleted `available_prompts.json` funny pool — `git show 6cea389:prompts/available_prompts.json`); human review gate.
+- **Phase 6**: specs rewrite (`specs/video-generation.md`, `specs/prompt-management.md`, add `specs/character.md`), README update.
 ```
