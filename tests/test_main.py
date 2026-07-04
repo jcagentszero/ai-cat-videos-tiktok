@@ -75,12 +75,15 @@ class TestMainCategory:
             yield
 
     def test_category_selects_prompt(self):
+        # --dry-run must peek (not consume) so dry runs don't burn through
+        # the prompt pool — see prompts/prompt_manager.py PromptManager.peek_prompt.
         mock_pm = MagicMock()
-        mock_pm.consume_prompt.return_value = ("A funny cat prompt", "funny")
+        mock_pm.peek_prompt.return_value = ("A funny cat prompt", "funny")
         with patch("sys.argv", ["main.py", "--dry-run", "--category", "funny"]):
             with patch("prompts.prompt_manager.PromptManager", return_value=mock_pm):
                 main()
-        mock_pm.consume_prompt.assert_called_once_with("funny")
+        mock_pm.peek_prompt.assert_called_once_with("funny")
+        mock_pm.consume_prompt.assert_not_called()
         self.pipeline_instance.run.assert_called_once_with(
             prompt="A funny cat prompt",
         )

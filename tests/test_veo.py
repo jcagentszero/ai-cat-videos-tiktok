@@ -27,7 +27,10 @@ class TestVeoGeneratorInit:
         mock_load, _ = mock_credentials
         with patch("config.settings.GCP_CREDENTIALS", "/path/to/sa.json"):
             VeoGenerator()
-        mock_load.assert_called_once_with("/path/to/sa.json")
+        mock_load.assert_called_once_with(
+            "/path/to/sa.json",
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
 
     def test_creates_client_with_vertexai(self, mock_credentials, mock_genai_client):
         _, creds = mock_credentials
@@ -87,7 +90,8 @@ class TestVeoPollJob:
 
         result = gen._poll_job(operation)
 
-        assert result == "gs://bucket/video.mp4"
+        assert result is operation.result.generated_videos[0]
+        assert result.video.uri == "gs://bucket/video.mp4"
         mock_time.sleep.assert_not_called()
 
     @patch("generators.veo.time")
@@ -107,7 +111,8 @@ class TestVeoPollJob:
 
         result = gen._poll_job(pending)
 
-        assert result == "gs://bucket/video.mp4"
+        assert result is done_op.result.generated_videos[0]
+        assert result.video.uri == "gs://bucket/video.mp4"
         client.operations.get.assert_called_once()
         mock_time.sleep.assert_called_once_with(10)
 

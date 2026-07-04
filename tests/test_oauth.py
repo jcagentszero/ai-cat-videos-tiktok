@@ -22,40 +22,47 @@ def _patch_settings(**overrides):
 class TestBuildAuthUrl:
     def test_url_starts_with_tiktok_auth(self):
         with _patch_settings():
-            url = oauth.build_auth_url("abc123")
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
         assert url.startswith(oauth.AUTH_URL)
 
     def test_contains_client_key(self):
         with _patch_settings():
-            url = oauth.build_auth_url("abc123")
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
         params = parse_qs(urlparse(url).query)
         assert params["client_key"] == ["test_key"]
 
     def test_contains_scopes(self):
         with _patch_settings():
-            url = oauth.build_auth_url("abc123")
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
         params = parse_qs(urlparse(url).query)
-        assert params["scope"] == [oauth.SCOPES]
+        assert params["scope"] == [oauth._scopes()]
 
     def test_contains_state(self):
         with _patch_settings():
-            url = oauth.build_auth_url("my_state_value")
+            url = oauth.build_auth_url("my_state_value", "challenge_xyz")
         params = parse_qs(urlparse(url).query)
         assert params["state"] == ["my_state_value"]
 
     def test_response_type_is_code(self):
         with _patch_settings():
-            url = oauth.build_auth_url("abc123")
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
         params = parse_qs(urlparse(url).query)
         assert params["response_type"] == ["code"]
 
     def test_redirect_uri_is_localhost(self):
         with _patch_settings():
-            url = oauth.build_auth_url("abc123")
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
         params = parse_qs(urlparse(url).query)
         redirect = params["redirect_uri"][0]
         assert redirect.startswith("http://localhost:")
         assert "/callback" in redirect
+
+    def test_contains_code_challenge(self):
+        with _patch_settings():
+            url = oauth.build_auth_url("abc123", "challenge_xyz")
+        params = parse_qs(urlparse(url).query)
+        assert params["code_challenge"] == ["challenge_xyz"]
+        assert params["code_challenge_method"] == ["S256"]
 
 
 class TestExchangeCode:
@@ -71,7 +78,7 @@ class TestExchangeCode:
 
         with _patch_settings(), \
              patch("publishers.oauth.requests.post", return_value=mock_resp) as mock_post:
-            oauth.exchange_code("auth_code_abc")
+            oauth.exchange_code("auth_code_abc", "verifier_xyz")
 
         call_kwargs = mock_post.call_args
         payload = call_kwargs.kwargs.get("data") or call_kwargs[1].get("data")
@@ -79,6 +86,7 @@ class TestExchangeCode:
         assert payload["client_secret"] == "test_secret"
         assert payload["code"] == "auth_code_abc"
         assert payload["grant_type"] == "authorization_code"
+        assert payload["code_verifier"] == "verifier_xyz"
 
     def test_returns_token_data(self):
         expected = {
@@ -93,7 +101,7 @@ class TestExchangeCode:
 
         with _patch_settings(), \
              patch("publishers.oauth.requests.post", return_value=mock_resp):
-            result = oauth.exchange_code("auth_code_abc")
+            result = oauth.exchange_code("auth_code_abc", "verifier_xyz")
 
         assert result == expected
 
@@ -108,7 +116,7 @@ class TestExchangeCode:
         with _patch_settings(), \
              patch("publishers.oauth.requests.post", return_value=mock_resp):
             with pytest.raises(RuntimeError, match="Code has expired"):
-                oauth.exchange_code("expired_code")
+                oauth.exchange_code("expired_code", "verifier_xyz")
 
     def test_raises_on_http_error(self):
         mock_resp = MagicMock()
@@ -117,7 +125,7 @@ class TestExchangeCode:
         with _patch_settings(), \
              patch("publishers.oauth.requests.post", return_value=mock_resp):
             with pytest.raises(Exception, match="500 Server Error"):
-                oauth.exchange_code("any_code")
+                oauth.exchange_code("any_code", "verifier_xyz")
 
 
 class TestCallbackHandler:
@@ -208,9 +216,9 @@ class TestRunOauthFlow:
 
         original_build = oauth.build_auth_url
 
-        def capture_state_build(state):
+        def capture_state_build(state, code_challenge):
             captured_state["state"] = state
-            return original_build(state)
+            return original_build(state, code_challenge)
 
         def fake_join(self, timeout=None):
             self.server = MagicMock()

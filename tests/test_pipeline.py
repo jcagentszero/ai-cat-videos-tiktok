@@ -140,16 +140,18 @@ class TestSelectPrompt:
         _, category = pipe._select_prompt()
         assert category in ("funny", "playful", "cute")
 
-    def test_consumes_prompt_from_available(self, pipe):
+    def test_peeks_without_consuming_in_dry_run(self, pipe):
+        # pipe is Pipeline(dry_run=True), so _select_prompt() must use
+        # peek_prompt() (not consume_prompt()) and leave the pool untouched.
         prompt, category = pipe._select_prompt()
         counts = pipe.prompt_manager.get_available_count()
-        assert counts[category] == 1  # started with 2, now 1
+        assert counts[category] == 2  # started with 2, still 2 (not consumed)
 
-    def test_consumed_prompt_appears_in_used(self, pipe):
+    def test_peeked_prompt_does_not_appear_in_used(self, pipe):
         prompt, category = pipe._select_prompt()
         used = pipe.prompt_manager._used
         used_prompts = [e["prompt"] for e in used[category]]
-        assert prompt in used_prompts
+        assert prompt not in used_prompts
 
     def test_falls_back_when_category_exhausted(self, pipe):
         # Exhaust the scheduled category
