@@ -14,9 +14,7 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 
 ---
 
-## 🟡 Phase 2 — Video Generation (Veo 3)
-
-- [ ] Migrate video generation from Google Vertex (Veo 3) to Kie.ai — cheaper per-video cost <!-- files: generators/veo.py, config/settings.py, tests/test_veo.py, tests/test_veo_smoke.py -->
+## 🟡 Phase 2 — Video Generation (Agent Opus handoff + OpusClip)
 
 ---
 
@@ -78,4 +76,5 @@ Format: `- [ ] Task <!-- files: relevant/file.py -->`
 - [x] Add video validation step — confirm MP4 is non-corrupt and meets TikTok size/duration limits before upload <!-- files: pipeline/runner.py -->
 - [x] Add TikTok analytics fetching — pull view/like counts 24h after posting, log to run history <!-- files: publishers/tiktok.py, storage/manager.py -->
 - [x] Multi-platform scaffold — add publishers/instagram.py and publishers/youtube_shorts.py as empty stubs for future expansion <!-- files: publishers/ -->
+- [x] Replace Veo 3 generation with a two-lane architecture — AI lane (markdown scripts staged to handoff/ for manual Agent Opus rendering, then published) + real-footage lane (OpusClip REST clipping) <!-- files: pipeline/runner.py, pipeline/handoff.py, clippers/opusclip.py, prompts/script.py, prompts/script_manager.py -->
 <!-- Completed tasks moved here -->

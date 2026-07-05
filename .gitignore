@@ -31,3 +31,11 @@ credentials/
 !config/example_*.json
 !prompts/available_prompts.json
 !prompts/used_prompts.json
+
+# Real cat photos stay out of the repo
+reference/nika/*
+!reference/nika/README.md
+!reference/nika/.gitkeep
+
+# Manual handoff working area (scripts staged for Agent Opus + rendered videos)
+handoff/

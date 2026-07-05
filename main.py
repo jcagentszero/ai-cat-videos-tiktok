@@ -4,13 +4,15 @@ main.py
 Entry point for the AI cat videos pipeline.
 
 Usage:
-  python main.py                  # run one video with scheduled prompt
-  python main.py --prompt "..."   # override the prompt
-  python main.py --dry-run        # generate but don't post
-  python main.py --category funny # use a specific prompt category
-  python main.py --digest         # print daily run summary
-  python main.py --analytics      # fetch TikTok analytics for recent posts
-  python main.py --sandbox        # use TikTok sandbox credentials
+  python main.py                        # run one daily pipeline pass
+  python main.py --dry-run              # peek/validate but don't post
+  python main.py --digest               # print daily run summary
+  python main.py --analytics            # fetch TikTok analytics for recent posts
+  python main.py --sandbox              # use TikTok sandbox credentials
+  python main.py --prepare              # stage next script + photos for Opus rendering
+  python main.py --prepare --script ID  # stage a specific script by id
+  python main.py --publish              # publish rendered videos from handoff/inbox to TikTok
+  python main.py --clip <video.mp4>     # upload a local video and let OpusClip cut it into clips
 """
 
 import argparse
@@ -22,8 +24,6 @@ from utils.logger import logger
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI Cat Videos → TikTok Pipeline")
-    parser.add_argument("--prompt",   type=str,  default=None, help="Override generation prompt")
-    parser.add_argument("--category", type=str,  default=None, help="Prompt category: funny|playful|cute")
     parser.add_argument("--dry-run",  action="store_true",      help="Generate video but skip posting")
     parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
@@ -31,6 +31,13 @@ def parse_args():
     parser.add_argument("--digest",   action="store_true",      help="Print daily run summary digest")
     parser.add_argument("--analytics", action="store_true",     help="Fetch TikTok analytics for recent posts")
     parser.add_argument("--sandbox",   action="store_true",     help="Use TikTok sandbox credentials")
+    parser.add_argument("--prepare",  action="store_true",      help="Stage the next script + photos for Agent Opus rendering")
+    parser.add_argument("--publish",  action="store_true",      help="Publish rendered videos from handoff/inbox to TikTok")
+    parser.add_argument("--clip",     type=str,  default=None,  help="Upload a local video and let OpusClip cut it into clips")
+    parser.add_argument("--script",   type=str,  default=None,  help="Specific script id (with --prepare)")
+    # Retired flags — old cron entries fail loudly with guidance:
+    parser.add_argument("--prompt",   type=str,  default=None,  help=argparse.SUPPRESS)
+    parser.add_argument("--category", type=str,  default=None,  help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -79,8 +86,15 @@ def main():
             sys.exit(1)
         return
 
-    if args.prompt and args.category:
-        logger.error("--prompt and --category are mutually exclusive")
+    if args.prompt or args.category:
+        logger.error(
+            "--prompt/--category were replaced by the script pipeline. "
+            "Use --prepare [--script <id>], --publish, or --clip <video>."
+        )
+        sys.exit(1)
+
+    if args.script and not args.prepare:
+        logger.error("--script requires --prepare")
         sys.exit(1)
 
     try:
@@ -93,24 +107,48 @@ def main():
         import config.settings as _settings
         _settings.DRY_RUN = True
 
-    prompt = args.prompt
-    if args.category:
-        from prompts.prompt_manager import PromptManager, VALID_CATEGORIES
-        if args.category.lower() not in VALID_CATEGORIES:
-            logger.error("Unknown category '{}'. Valid: {}",
-                         args.category, ", ".join(sorted(VALID_CATEGORIES)))
-            sys.exit(1)
-        pm = PromptManager()
-        if args.dry_run:
-            prompt, _ = pm.peek_prompt(args.category.lower())
-        else:
-            prompt, _ = pm.consume_prompt(args.category.lower())
-        logger.info("Selected prompt from category '{}'", args.category)
-
     from pipeline.runner import Pipeline
+
+    if args.clip:
+        from pathlib import Path
+        video = Path(args.clip)
+        if not video.is_file():
+            logger.error("Video not found: {}", video)
+            sys.exit(1)
+        try:
+            result = Pipeline().clip_footage(video)
+            logger.info("Clipping done: {} clips (project {})",
+                        len(result["clips"]), result["project_id"])
+        except Exception as e:
+            logger.error("Clipping failed: {}", e)
+            sys.exit(1)
+        return
+
+    if args.publish:
+        try:
+            results = Pipeline().publish_inbox()
+            logger.info("Published {} video(s)", len(results))
+        except Exception as e:
+            logger.error("Publish failed: {}", e)
+            sys.exit(1)
+        return
+
+    if args.prepare:
+        for i in range(args.count):
+            try:
+                result = Pipeline().prepare(script_id=args.script)
+                logger.info("Prepared {}/{}: '{}' — {}",
+                            i + 1, args.count,
+                            result["script_id"], result.get("handoff_dir", ""))
+            except Exception as e:
+                logger.error("Prepare {}/{} failed: {}", i + 1, args.count, e)
+                sys.exit(1)
+        return
+
+    # Default: daily routine (used by --schedule too)
     for i in range(args.count):
         try:
-            result = Pipeline().run(prompt=prompt)
+            result = Pipeline().run()
             logger.info("Run {}/{} complete (status={})",
                         i + 1, args.count, result["status"])
         except Exception as e:

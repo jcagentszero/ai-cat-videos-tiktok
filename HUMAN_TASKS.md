@@ -10,12 +10,10 @@ These tasks require human action (account creation, credentials, config) and can
 
 ---
 
-## Phase 2 — Video Generation (Veo 3)
+## Phase 2 — Video Generation (Agent Opus handoff + OpusClip)
 
-- [x] Set up GCP project with Vertex AI / Imagen / Veo 3 API enabled
-- [x] Create GCP service account and download credentials JSON
-- [x] Set `GOOGLE_APPLICATION_CREDENTIALS` path in `.env`
-- [x] Confirm Veo 3 quota limits and billing are active
+- [ ] Get an Opus (opus.pro) account/API key and set `AGENT_OPUS_API_KEY` (+ `OPUS_ORG_ID` for multi-org accounts) in `.env` — used by both the Agent Opus UI handoff and the OpusClip real-footage lane (`--clip`)
+- [ ] Drop Nika's reference photos into `reference/nika/` for the manual handoff package
 
 ---
 
