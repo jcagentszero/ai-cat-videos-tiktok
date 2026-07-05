@@ -6,6 +6,7 @@ Two-lane pipeline orchestrator.
 AI lane (Agent Opus is UI-only — see specs/opus-api-notes.md):
   prepare()        scripts → handoff/pending/ package for manual rendering
   publish_inbox()  handoff/inbox/ videos → validate → TikTok → archive
+                   (per-script isolation: one failure doesn't block the rest)
 
 Real-footage lane:
   clip_footage()   local video → OpusClip API → downloaded clips
@@ -58,12 +59,26 @@ class Pipeline:
     # ── AI lane ──────────────────────────────────────────────────────────
 
     def prepare(self, script_id: str | None = None) -> dict:
-        """Stage the next script + Nika's photos for manual Agent Opus render."""
+        """Stage the next script + Nika's photos for manual Agent Opus render.
+
+        In dry-run mode this only peeks the next script — no handoff package
+        is staged and no run record is written, so a dry run never mutates
+        the script pool or the filesystem.
+        """
         try:
             if self.dry_run:
                 script = self.script_manager.peek_script(script_id)
-            else:
-                script = self.script_manager.consume_script(script_id)
+                logger.info(
+                    "DRY_RUN: would stage handoff for '{}' (no side effects)",
+                    script.id,
+                )
+                return {
+                    "script_id": script.id,
+                    "title": script.title,
+                    "handoff_dir": None,
+                    "status": "dry_run",
+                }
+            script = self.script_manager.consume_script(script_id)
             photos = load_reference_photos()
             dest = prepare_handoff(script, photos)
         except Exception as e:
@@ -82,7 +97,13 @@ class Pipeline:
         return result
 
     def publish_inbox(self) -> list[dict]:
-        """Publish every pending script whose rendered video has arrived."""
+        """Publish every pending script whose rendered video has arrived.
+
+        Each script is isolated: a failure for one (bad video, publish
+        error, etc.) is logged and recorded, then the loop moves on to the
+        rest of the batch. The failed script is left pending (not archived)
+        so it can be retried on the next run.
+        """
         results = []
         for script_id in list_pending():
             video_path = find_inbox_video(script_id)
@@ -109,7 +130,7 @@ class Pipeline:
             except Exception as e:
                 self._handle_error("publish_inbox", e)
                 self._save_failure(script, script_id, video_path, e)
-                raise
+                continue
 
             result = {
                 "prompt": script.title,

@@ -26,7 +26,7 @@ _USED_LOG = _SCRIPTS_DIR / "used_log.json"
 
 
 class ScriptManager:
-    """Manages the pool of full video scripts (replaces PromptManager)."""
+    """Manages the pool of full, multi-shot video scripts awaiting handoff."""
 
     def __init__(
         self,

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -108,10 +109,18 @@ class TestPrepare:
         assert result["script_id"] == "belly-rub-betrayal"
         mock_storage.save_run.assert_called_once()
 
-    def test_dry_run_peeks(self, mock_scripts):
-        Pipeline(dry_run=True).prepare()
+    def test_dry_run_peeks(self, mock_scripts, mock_handoff, mock_storage):
+        result = Pipeline(dry_run=True).prepare()
         mock_scripts.peek_script.assert_called_once_with(None)
         mock_scripts.consume_script.assert_not_called()
+        mock_handoff["prepare"].assert_not_called()
+        mock_storage.save_run.assert_not_called()
+        assert result == {
+            "script_id": "belly-rub-betrayal",
+            "title": "The Belly Rub Betrayal",
+            "handoff_dir": None,
+            "status": "dry_run",
+        }
 
     def test_script_id_forwarded(self, mock_scripts):
         Pipeline(dry_run=False).prepare(script_id="belly-rub-betrayal")
@@ -152,10 +161,47 @@ class TestPublishInbox:
 
     def test_validation_failure_recorded(self, mock_validate, mock_storage):
         mock_validate.side_effect = RuntimeError("bad video")
-        with pytest.raises(RuntimeError):
-            Pipeline(dry_run=False).publish_inbox()
+        # A single script's failure is isolated: publish_inbox does not
+        # raise, it just records the failure and returns no results.
+        results = Pipeline(dry_run=False).publish_inbox()
+        assert results == []
         fail = mock_storage.save_run.call_args[0][2]
         assert fail["status"] == "failed"
+
+    def test_isolates_failure_per_script(self, mock_handoff, mock_tiktok,
+                                         mock_storage, mock_validate,
+                                         sample_script):
+        """One script's failure must not abort the rest of the batch."""
+        second_script = replace(sample_script, id="second-script")
+        mock_handoff["pending"].return_value = (sample_script.id, second_script.id)
+        mock_handoff["find"].side_effect = (
+            lambda sid: Path(f"/tmp/handoff/inbox/{sid}.mp4")
+        )
+        mock_handoff["load"].side_effect = [sample_script, second_script]
+        mock_validate.side_effect = [RuntimeError("bad video"), None]
+
+        results = Pipeline(dry_run=False).publish_inbox()
+
+        # Only the second (healthy) script made it into the results.
+        assert len(results) == 1
+        assert results[0]["script_id"] == second_script.id
+        assert results[0]["status"] == "published"
+
+        # The first script's failure was recorded, not swallowed.
+        fail_calls = [
+            c for c in mock_storage.save_run.call_args_list
+            if c[0][2].get("status") == "failed"
+        ]
+        assert len(fail_calls) == 1
+        assert fail_calls[0][0][2]["script_id"] == sample_script.id
+
+        # Save-run happened once per script (one failed, one published).
+        assert mock_storage.save_run.call_count == 2
+        # Only the successful script was published/archived.
+        mock_tiktok.publish.assert_called_once()
+        mock_handoff["archive"].assert_called_once_with(
+            second_script.id, Path(f"/tmp/handoff/inbox/{second_script.id}.mp4"),
+        )
 
     def test_hashtags_deduped_base_first(self, mock_handoff, mock_tiktok,
                                          overlapping_script):
@@ -241,21 +287,22 @@ class TestSaveFailure:
     def test_failure_record_has_script_id_and_error(self, mock_validate,
                                                     mock_storage, sample_script):
         mock_validate.side_effect = RuntimeError("bad video")
-        with pytest.raises(RuntimeError):
-            Pipeline(dry_run=False).publish_inbox()
+        results = Pipeline(dry_run=False).publish_inbox()
+        assert results == []
         fail = mock_storage.save_run.call_args[0][2]
         assert fail["status"] == "failed"
         assert fail["script_id"] == sample_script.id
         assert fail["error"] == "RuntimeError: bad video"
 
-    def test_storage_error_swallowed_original_raised(self, mock_validate,
-                                                     mock_storage):
+    def test_storage_error_during_failure_save_does_not_crash(self, mock_validate,
+                                                               mock_storage):
         # If save_run itself blows up while recording the failure, the
-        # ORIGINAL error must still be the one that propagates.
+        # per-script isolation must still hold: no exception propagates and
+        # the loop still completes.
         mock_validate.side_effect = RuntimeError("bad video")
         mock_storage.save_run.side_effect = OSError("disk full")
-        with pytest.raises(RuntimeError, match="bad video"):
-            Pipeline(dry_run=False).publish_inbox()
+        results = Pipeline(dry_run=False).publish_inbox()
+        assert results == []
 
 
 @pytest.mark.usefixtures(*ALL)

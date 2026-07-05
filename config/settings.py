@@ -64,7 +64,6 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CAPTION_MODEL     = os.getenv("CAPTION_MODEL", "claude-haiku-4-5-20251001")
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
-VIDEOS_PER_RUN           = int(os.getenv("VIDEOS_PER_RUN", "1"))
 DRY_RUN                  = os.getenv("DRY_RUN", "false").lower() == "true"
 LOG_LEVEL                = os.getenv("LOG_LEVEL", "INFO")
 NOTIFY_EMAIL             = os.getenv("NOTIFY_EMAIL", "")
