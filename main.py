@@ -4,13 +4,13 @@ main.py
 Entry point for the AI cat videos pipeline.
 
 Usage:
-  python main.py                  # run one video with scheduled prompt
-  python main.py --prompt "..."   # override the prompt
-  python main.py --dry-run        # generate but don't post
-  python main.py --category funny # use a specific prompt category
+  python main.py                  # run one daily pipeline pass
+  python main.py --dry-run        # peek/validate but don't post
   python main.py --digest         # print daily run summary
   python main.py --analytics      # fetch TikTok analytics for recent posts
   python main.py --sandbox        # use TikTok sandbox credentials
+
+Note: the two-lane pipeline CLI (--prepare/--publish/--clip) lands in Task 10.
 """
 
 import argparse
@@ -22,8 +22,6 @@ from utils.logger import logger
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI Cat Videos → TikTok Pipeline")
-    parser.add_argument("--prompt",   type=str,  default=None, help="Override generation prompt")
-    parser.add_argument("--category", type=str,  default=None, help="Prompt category: funny|playful|cute")
     parser.add_argument("--dry-run",  action="store_true",      help="Generate video but skip posting")
     parser.add_argument("--auth",     action="store_true",      help="Run TikTok OAuth flow to get tokens")
     parser.add_argument("--count",    type=int,  default=1,     help="Number of videos to generate")
@@ -79,10 +77,6 @@ def main():
             sys.exit(1)
         return
 
-    if args.prompt and args.category:
-        logger.error("--prompt and --category are mutually exclusive")
-        sys.exit(1)
-
     try:
         validate_config(dry_run=args.dry_run)
     except ValueError as e:
@@ -93,24 +87,10 @@ def main():
         import config.settings as _settings
         _settings.DRY_RUN = True
 
-    prompt = args.prompt
-    if args.category:
-        from prompts.prompt_manager import PromptManager, VALID_CATEGORIES
-        if args.category.lower() not in VALID_CATEGORIES:
-            logger.error("Unknown category '{}'. Valid: {}",
-                         args.category, ", ".join(sorted(VALID_CATEGORIES)))
-            sys.exit(1)
-        pm = PromptManager()
-        if args.dry_run:
-            prompt, _ = pm.peek_prompt(args.category.lower())
-        else:
-            prompt, _ = pm.consume_prompt(args.category.lower())
-        logger.info("Selected prompt from category '{}'", args.category)
-
     from pipeline.runner import Pipeline
     for i in range(args.count):
         try:
-            result = Pipeline().run(prompt=prompt)
+            result = Pipeline().run()
             logger.info("Run {}/{} complete (status={})",
                         i + 1, args.count, result["status"])
         except Exception as e:

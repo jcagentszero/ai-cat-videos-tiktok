@@ -45,65 +45,13 @@ class TestMainDryRun:
         with patch("sys.argv", ["main.py", "--dry-run"]):
             main()
         self.pipeline_cls.assert_called_once()
-        self.pipeline_instance.run.assert_called_once()
-
-    def test_prompt_forwarded(self):
-        with patch("sys.argv", ["main.py", "--dry-run", "--prompt", "A sleepy cat"]):
-            main()
-        self.pipeline_instance.run.assert_called_once_with(prompt="A sleepy cat")
+        self.pipeline_instance.run.assert_called_once_with()
 
     def test_count_runs_multiple(self):
         with patch("sys.argv", ["main.py", "--dry-run", "--count", "3"]):
             main()
         assert self.pipeline_cls.call_count == 3
         assert self.pipeline_instance.run.call_count == 3
-
-
-class TestMainCategory:
-    @pytest.fixture(autouse=True)
-    def mock_validate(self):
-        with patch("main.validate_config"):
-            yield
-
-    @pytest.fixture(autouse=True)
-    def mock_pipeline(self):
-        pipe_instance = MagicMock()
-        pipe_instance.run.return_value = {"status": "dry_run"}
-        with patch("pipeline.runner.Pipeline", return_value=pipe_instance) as cls:
-            self.pipeline_cls = cls
-            self.pipeline_instance = pipe_instance
-            yield
-
-    def test_category_selects_prompt(self):
-        # --dry-run must peek (not consume) so dry runs don't burn through
-        # the prompt pool — see prompts/prompt_manager.py PromptManager.peek_prompt.
-        mock_pm = MagicMock()
-        mock_pm.peek_prompt.return_value = ("A funny cat prompt", "funny")
-        with patch("sys.argv", ["main.py", "--dry-run", "--category", "funny"]):
-            with patch("prompts.prompt_manager.PromptManager", return_value=mock_pm):
-                main()
-        mock_pm.peek_prompt.assert_called_once_with("funny")
-        mock_pm.consume_prompt.assert_not_called()
-        self.pipeline_instance.run.assert_called_once_with(
-            prompt="A funny cat prompt",
-        )
-
-    def test_invalid_category_exits(self):
-        with patch("sys.argv", ["main.py", "--dry-run", "--category", "bogus"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-        assert exc_info.value.code == 1
-
-    def test_prompt_and_category_mutually_exclusive(self):
-        with patch("sys.argv", ["main.py", "--prompt", "x", "--category", "funny"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-        assert exc_info.value.code == 1
-
-    def test_no_prompt_no_category_uses_none(self):
-        with patch("sys.argv", ["main.py", "--dry-run"]):
-            main()
-        self.pipeline_instance.run.assert_called_once_with(prompt=None)
 
 
 class TestMainAnalytics:

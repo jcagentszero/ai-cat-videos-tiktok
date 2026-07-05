@@ -1,185 +1,225 @@
 """
 pipeline/runner.py
 ──────────────────
-Main pipeline orchestrator. Wires together:
-  prompts → Veo generator → storage → TikTok publisher
+Two-lane pipeline orchestrator.
 
-Usage:
-  from pipeline.runner import Pipeline
-  Pipeline().run()
+AI lane (Agent Opus is UI-only — see specs/opus-api-notes.md):
+  prepare()        scripts → handoff/pending/ package for manual rendering
+  publish_inbox()  handoff/inbox/ videos → validate → TikTok → archive
 
+Real-footage lane:
+  clip_footage()   local video → OpusClip API → downloaded clips
+
+Scheduler entry point:
+  run()            publish_inbox(), then prepare() if nothing is pending
 """
 
 import smtplib
+import time
 import traceback
 from email.message import EmailMessage
 from pathlib import Path
 
 from config import settings
-from generators.veo import VeoGenerator
-from utils.video_validator import validate_video
-from prompts.prompt_manager import PromptManager, DAY_SCHEDULE
+from characters.persona import NIKA
+from clippers.opusclip import OpusClipClient
+from pipeline.handoff import (
+    archive_handoff,
+    find_inbox_video,
+    list_pending,
+    load_pending_script,
+    prepare_handoff,
+)
+from prompts.script import Script
+from prompts.script_manager import ScriptManager
 from publishers.tiktok import TikTokPublisher
 from storage.manager import StorageManager
+from utils.reference_photos import load_reference_photos
+from utils.video_validator import validate_video
 from utils.logger import logger
 
 
 class Pipeline:
-    """
-    End-to-end pipeline: generate video → store → publish.
+    """Two-lane pipeline: AI handoff lane + real-footage clipping lane."""
 
-    Execution order:
-      1. Select prompt (scheduled or random)
-      2. Generate video via Veo 3
-      3. Save metadata to run log
-      4. Optionally process/resize video
-      5. Build caption and hashtags
-      6. Publish to TikTok (unless DRY_RUN=true)
-      7. Log result and notify
-
-    """
+    BASE_HASHTAGS = ["catvideos", "catsoftiktok", "aiart", "aigenerated"]
 
     def __init__(self, dry_run=None):
         self.dry_run = dry_run if dry_run is not None else settings.DRY_RUN
-
         try:
             self.storage = StorageManager()
-            self.generator = VeoGenerator()
-            self.prompt_manager = PromptManager()
+            self.script_manager = ScriptManager()
             self.publisher = None if self.dry_run else TikTokPublisher()
-            logger.info(
-                "Pipeline initialized (dry_run={})", self.dry_run,
-            )
+            logger.info("Pipeline initialized (dry_run={})", self.dry_run)
         except Exception as e:
             logger.error("Failed to initialize Pipeline: {}", e)
             raise
 
-    def run(self, prompt: str | None = None) -> dict:
-        """
-        Execute the full pipeline for one video.
+    # ── AI lane ──────────────────────────────────────────────────────────
 
-        Args:
-            prompt: Override prompt. If None, uses scheduled selector.
-
-        Returns:
-            Result dict: {prompt, video_path, caption, hashtags,
-                          publish_result, status}
-        """
-        video_path = None
-
+    def prepare(self, script_id: str | None = None) -> dict:
+        """Stage the next script + Nika's photos for manual Agent Opus render."""
         try:
-            # 1. Select prompt
-            try:
-                if prompt is None:
-                    prompt, category = self._select_prompt()
-                else:
-                    category = self.prompt_manager.find_category(prompt)
-                logger.info("Pipeline run started with prompt: {!r}", prompt[:80])
-            except Exception as e:
-                self._handle_error("select_prompt", e)
-                raise
-
-            # 2. Generate video
-            try:
-                video_path = self.generator.generate(prompt)
-                logger.info("Video generated: {}", video_path)
-            except Exception as e:
-                self._handle_error("generate", e)
-                raise
-
-            # 3. Validate video
-            try:
-                validate_video(video_path)
-            except Exception as e:
-                self._handle_error("validate_video", e)
-                raise
-
-            # 4. Build caption and hashtags
-            try:
-                caption, hashtags = self._build_caption(prompt, category)
-            except Exception as e:
-                self._handle_error("build_caption", e)
-                raise
-
-            # 5. Publish (skip if dry_run)
-            publish_result = None
             if self.dry_run:
-                logger.info(
-                    "DRY_RUN: skipping publish — would have posted: "
-                    "video={}, caption={!r}, hashtags={}",
-                    video_path, caption, hashtags,
-                )
-                status = "dry_run"
+                script = self.script_manager.peek_script(script_id)
             else:
-                try:
+                script = self.script_manager.consume_script(script_id)
+            photos = load_reference_photos()
+            dest = prepare_handoff(script, photos)
+        except Exception as e:
+            self._handle_error("prepare", e)
+            raise
+
+        result = {
+            "script_id": script.id,
+            "title": script.title,
+            "handoff_dir": str(dest),
+            "status": "prepared",
+        }
+        self.storage.save_run(script.title, dest, result)
+        logger.info("Prepared handoff for '{}' — render it in Agent Opus, "
+                    "then drop the mp4 in handoff/inbox/", script.id)
+        return result
+
+    def publish_inbox(self) -> list[dict]:
+        """Publish every pending script whose rendered video has arrived."""
+        results = []
+        for script_id in list_pending():
+            video_path = find_inbox_video(script_id)
+            if video_path is None:
+                logger.debug("No inbox video yet for '{}'", script_id)
+                continue
+
+            script = None
+            try:
+                script = load_pending_script(script_id)
+                validate_video(video_path)
+                caption, hashtags = self._build_caption(script)
+
+                if self.dry_run:
+                    logger.info("DRY_RUN: would publish {} for '{}'",
+                                video_path, script_id)
+                    publish_result, status = None, "dry_run"
+                else:
                     publish_result = self.publisher.publish(
                         video_path, caption, hashtags,
                     )
                     status = "published"
-                except Exception as e:
-                    self._handle_error("publish", e)
-                    raise
-        except Exception as e:
-            self._save_failure(prompt, video_path, e)
-            raise
+                    archive_handoff(script_id, video_path)
+            except Exception as e:
+                self._handle_error("publish_inbox", e)
+                self._save_failure(script, script_id, video_path, e)
+                raise
 
-        # 6. Save run record (only reached on success)
-        result = {
-            "prompt": prompt,
-            "video_path": str(video_path),
-            "caption": caption,
-            "hashtags": hashtags,
-            "publish_result": publish_result,
-            "status": status,
-        }
+            result = {
+                "prompt": script.title,
+                "script_id": script.id,
+                "title": script.title,
+                "video_path": str(video_path),
+                "caption": caption,
+                "hashtags": hashtags,
+                "publish_result": publish_result,
+                "status": status,
+            }
+            self.storage.save_run(script.title, video_path, result)
+            results.append(result)
+        return results
+
+    # ── Real-footage lane ────────────────────────────────────────────────
+
+    def clip_footage(self, video: Path) -> dict:
+        """Upload local footage, let OpusClip cut it, download the clips."""
         try:
-            self.storage.save_run(prompt, video_path, result)
+            client = OpusClipClient()
+            upload_id = client.upload_video(video)
+            project_id = client.create_clip_project(
+                upload_id,
+                topic_keywords=("cat", NIKA.name.lower()),
+            )
+            clips = self._poll_clips(client, project_id)
+
+            downloads = []
+            for clip in clips:
+                if not clip.video_url:
+                    logger.warning("Clip {} has no video URL, skipping", clip.id)
+                    continue
+                dest = settings.OUTPUT_DIR / "clips" / project_id / f"{clip.id}.mp4"
+                downloads.append(str(client.download(clip.video_url, dest)))
         except Exception as e:
-            self._handle_error("save_run", e)
+            self._handle_error("clip_footage", e)
             raise
 
-        logger.info("Pipeline run complete (status={})", status)
+        result = {
+            "prompt": f"clip:{video.name}",
+            "project_id": project_id,
+            "clips": downloads,
+            "status": "clipped",
+        }
+        self.storage.save_run(f"clip:{video.name}", video, result)
+        logger.info("Clipping complete: {} clips in output/clips/{}",
+                    len(downloads), project_id)
         return result
 
-    def _save_failure(self, prompt, video_path, error):
+    def _poll_clips(self, client, project_id: str):
+        """Poll exportable clips until curation finishes. Raises TimeoutError."""
+        timeout = settings.OPUS_POLL_TIMEOUT
+        interval = float(settings.OPUS_POLL_INTERVAL)
+        max_interval = 120.0
+        start = time.monotonic()
+
+        while True:
+            clips = client.get_clips(project_id)
+            if clips:
+                logger.info("Project {} produced {} clips in {:.0f}s",
+                            project_id, len(clips), time.monotonic() - start)
+                return clips
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    f"OpusClip project {project_id} produced no clips "
+                    f"after {timeout}s"
+                )
+            logger.debug("Waiting for clips (elapsed={:.0f}s)", elapsed)
+            time.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
+
+    # ── Scheduler entry point ────────────────────────────────────────────
+
+    def run(self) -> dict:
+        """Daily routine: post anything ready, then stage the next script."""
+        published = self.publish_inbox()
+        prepared = None
+        if not list_pending():
+            prepared = self.prepare()
+        return {"published": published, "prepared": prepared, "status": "ok"}
+
+    # ── Shared helpers ───────────────────────────────────────────────────
+
+    def _build_caption(self, script: Script) -> tuple[str, list[str]]:
+        caption = script.caption or script.hook or script.title
+        hashtags = list(dict.fromkeys(
+            [*self.BASE_HASHTAGS, *NIKA.hashtags, *script.hashtags]
+        ))
+        logger.info("Built caption ({} chars, {} hashtags) for script '{}'",
+                    len(caption), len(hashtags), script.id)
+        return caption, hashtags
+
+    def _save_failure(self, script, script_id, video_path, error):
         fail_result = {
-            "prompt": prompt,
+            "prompt": script.title if script else script_id,
+            "script_id": script_id,
             "video_path": str(video_path) if video_path else None,
             "status": "failed",
             "error": f"{type(error).__name__}: {error}",
         }
         try:
             self.storage.save_run(
-                prompt or "unknown",
+                script.title if script else script_id,
                 video_path or Path("."),
                 fail_result,
             )
         except Exception as save_err:
             logger.debug("Could not save failure record: {}", save_err)
-
-    def _select_prompt(self) -> tuple[str, str]:
-        if self.dry_run:
-            return self.prompt_manager.peek_prompt()
-        return self.prompt_manager.consume_prompt()
-
-    BASE_HASHTAGS = ["catvideos", "catsoftiktok", "aiart", "aigenerated"]
-
-    CATEGORY_HASHTAGS = {
-        "playful": ["playfulcat", "kitten", "catplay"],
-        "funny": ["funnycat", "catmemes", "catsbeingcats"],
-        "cute": ["cutecat", "kittenlife", "adorable"],
-    }
-
-    def _build_caption(self, prompt: str, category: str | None = None) -> tuple[str, list[str]]:
-        caption = prompt.split(",")[0].strip()
-
-        hashtags = list(self.BASE_HASHTAGS)
-        if category:
-            hashtags.extend(self.CATEGORY_HASHTAGS.get(category, []))
-
-        logger.info("Built caption ({} chars, {} hashtags, category={})",
-                    len(caption), len(hashtags), category or "unknown")
-        return caption, hashtags
 
     def _handle_error(self, step: str, error: Exception) -> None:
         tb = traceback.format_exception(type(error), error, error.__traceback__)

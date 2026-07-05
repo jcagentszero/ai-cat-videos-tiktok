@@ -1,540 +1,195 @@
-import json
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from pipeline.runner import Pipeline
-
-
-SAMPLE_PROMPTS = {
-    "funny": ["A funny cat prompt 1", "A funny cat prompt 2"],
-    "playful": ["A playful cat prompt 1", "A playful cat prompt 2"],
-    "cute": ["A cute cat prompt 1", "A cute cat prompt 2"],
-}
-
-EMPTY_USED = {"funny": [], "playful": [], "cute": []}
+from prompts.script import parse_script
 
 
 @pytest.fixture
-def prompt_files(tmp_path):
-    avail = tmp_path / "available.json"
-    used = tmp_path / "used.json"
-    avail.write_text(json.dumps(SAMPLE_PROMPTS))
-    used.write_text(json.dumps(EMPTY_USED))
-    return avail, used
+def sample_script(script_file):
+    return parse_script(script_file)
 
 
 @pytest.fixture
-def mock_veo():
-    gen = MagicMock()
-    with patch("pipeline.runner.VeoGenerator", return_value=gen) as cls:
-        yield cls, gen
+def mock_scripts(sample_script):
+    mgr = MagicMock()
+    mgr.consume_script.return_value = sample_script
+    mgr.peek_script.return_value = sample_script
+    with patch("pipeline.runner.ScriptManager", return_value=mgr):
+        yield mgr
+
+
+@pytest.fixture
+def mock_handoff(sample_script):
+    with patch("pipeline.runner.prepare_handoff",
+               return_value=Path("/tmp/handoff/pending/x")) as prep, \
+         patch("pipeline.runner.list_pending",
+               return_value=(sample_script.id,)) as pending, \
+         patch("pipeline.runner.find_inbox_video",
+               return_value=Path("/tmp/handoff/inbox/x.mp4")) as find, \
+         patch("pipeline.runner.load_pending_script",
+               return_value=sample_script) as load, \
+         patch("pipeline.runner.archive_handoff") as archive:
+        yield {"prepare": prep, "pending": pending, "find": find,
+               "load": load, "archive": archive}
+
+
+@pytest.fixture
+def mock_photos():
+    with patch("pipeline.runner.load_reference_photos",
+               return_value=(Path("/tmp/nika.jpg"),)):
+        yield
 
 
 @pytest.fixture
 def mock_tiktok():
     pub = MagicMock()
-    with patch("pipeline.runner.TikTokPublisher", return_value=pub) as cls:
-        yield cls, pub
+    pub.publish.return_value = {"publish_id": "pub_1"}
+    with patch("pipeline.runner.TikTokPublisher", return_value=pub):
+        yield pub
 
 
 @pytest.fixture
-def mock_storage(tmp_path):
+def mock_storage():
     mgr = MagicMock()
-    with patch("pipeline.runner.StorageManager", return_value=mgr) as cls:
-        yield cls, mgr
-
-
-class TestPipelineInit:
-    def test_creates_storage(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            cls, mgr = mock_storage
-            pipe = Pipeline(dry_run=False)
-            cls.assert_called_once()
-            assert pipe.storage is mgr
-
-    def test_creates_generator(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            cls, gen = mock_veo
-            Pipeline(dry_run=False)
-            cls.assert_called_once()
-
-    def test_stores_generator(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            _, gen = mock_veo
-            pipe = Pipeline(dry_run=False)
-            assert pipe.generator is gen
-
-    def test_creates_publisher_when_not_dry_run(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            cls, pub = mock_tiktok
-            pipe = Pipeline(dry_run=False)
-            cls.assert_called_once()
-            assert pipe.publisher is pub
-
-    def test_skips_publisher_when_dry_run(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            cls, _ = mock_tiktok
-            pipe = Pipeline(dry_run=True)
-            cls.assert_not_called()
-            assert pipe.publisher is None
-
-    def test_dry_run_defaults_to_settings(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.settings.DRY_RUN", True):
-                pipe = Pipeline()
-            assert pipe.dry_run is True
-
-    def test_dry_run_false_default(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.settings.DRY_RUN", False):
-                pipe = Pipeline()
-            assert pipe.dry_run is False
-
-    def test_dry_run_explicit_overrides_settings(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.settings.DRY_RUN", False):
-                pipe = Pipeline(dry_run=True)
-            assert pipe.dry_run is True
-
-    def test_raises_on_generator_failure(self, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.VeoGenerator", side_effect=RuntimeError("bad creds")):
-                with pytest.raises(RuntimeError, match="bad creds"):
-                    Pipeline(dry_run=False)
-
-    def test_raises_on_publisher_failure(self, mock_veo, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
-                with pytest.raises(RuntimeError, match="no token"):
-                    Pipeline(dry_run=False)
-
-    def test_publisher_failure_skipped_in_dry_run(self, mock_veo, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            with patch("pipeline.runner.TikTokPublisher", side_effect=RuntimeError("no token")):
-                pipe = Pipeline(dry_run=True)
-            assert pipe.publisher is None
-
-
-class TestSelectPrompt:
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        avail, used = prompt_files
-        from prompts.prompt_manager import PromptManager
-        pm = PromptManager(available_path=avail, used_path=used)
-        with patch("pipeline.runner.PromptManager", return_value=pm):
-            pipe = Pipeline(dry_run=True)
-        return pipe
-
-    def test_returns_prompt_tuple(self, pipe):
-        result = pipe._select_prompt()
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-
-    def test_prompt_is_string(self, pipe):
-        prompt, category = pipe._select_prompt()
-        assert isinstance(prompt, str)
-        assert len(prompt) > 0
-
-    def test_category_is_valid(self, pipe):
-        _, category = pipe._select_prompt()
-        assert category in ("funny", "playful", "cute")
-
-    def test_peeks_without_consuming_in_dry_run(self, pipe):
-        # pipe is Pipeline(dry_run=True), so _select_prompt() must use
-        # peek_prompt() (not consume_prompt()) and leave the pool untouched.
-        prompt, category = pipe._select_prompt()
-        counts = pipe.prompt_manager.get_available_count()
-        assert counts[category] == 2  # started with 2, still 2 (not consumed)
-
-    def test_peeked_prompt_does_not_appear_in_used(self, pipe):
-        prompt, category = pipe._select_prompt()
-        used = pipe.prompt_manager._used
-        used_prompts = [e["prompt"] for e in used[category]]
-        assert prompt not in used_prompts
-
-    def test_falls_back_when_category_exhausted(self, pipe):
-        # Exhaust the scheduled category
-        pipe.prompt_manager.consume_prompt()
-        pipe.prompt_manager.consume_prompt()
-        # There may still be prompts in other categories
-        # Should not raise since other categories have prompts
-        prompt, category = pipe._select_prompt()
-        assert isinstance(prompt, str)
-
-    def test_raises_when_all_empty(self, pipe):
-        # Exhaust all categories
-        for _ in range(6):  # 2 per category × 3 categories
-            pipe.prompt_manager.consume_prompt()
-        with pytest.raises(RuntimeError, match="All prompt pools are empty"):
-            pipe._select_prompt()
-
-
-class TestBuildCaption:
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        with patch("pipeline.runner.PromptManager"):
-            return Pipeline(dry_run=True)
-
-    def test_caption_uses_first_clause(self, pipe):
-        prompt = "A funny cat doing something, with lots of detail, and more"
-        caption, _ = pipe._build_caption(prompt, "funny")
-        assert caption == "A funny cat doing something"
-
-    def test_caption_handles_no_comma(self, pipe):
-        prompt = "A funny cat doing something"
-        caption, _ = pipe._build_caption(prompt, "funny")
-        assert caption == prompt
-
-    def test_returns_hashtag_list(self, pipe):
-        caption, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
-        assert isinstance(hashtags, list)
-        assert len(hashtags) > 0
-        assert all(isinstance(h, str) for h in hashtags)
-
-    def test_base_hashtags_always_present(self, pipe):
-        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
-        for tag in Pipeline.BASE_HASHTAGS:
-            assert tag in hashtags
-
-    def test_funny_prompt_gets_funny_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
-        for tag in Pipeline.CATEGORY_HASHTAGS["funny"]:
-            assert tag in hashtags
-
-    def test_cute_prompt_gets_cute_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption("A cute cat prompt 1", "cute")
-        for tag in Pipeline.CATEGORY_HASHTAGS["cute"]:
-            assert tag in hashtags
-
-    def test_unknown_prompt_gets_only_base_hashtags(self, pipe):
-        _, hashtags = pipe._build_caption("A totally custom prompt, not in any list", None)
-        assert hashtags == list(Pipeline.BASE_HASHTAGS)
-
-    def test_hashtags_do_not_contain_hash_symbol(self, pipe):
-        _, hashtags = pipe._build_caption("A funny cat prompt 1", "funny")
-        for tag in hashtags:
-            assert not tag.startswith("#")
-
-    def test_returns_tuple(self, pipe):
-        result = pipe._build_caption("A playful cat prompt 1", "playful")
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-
-    def test_caption_is_nonempty_string(self, pipe):
-        caption, _ = pipe._build_caption("A playful cat prompt 1", "playful")
-        assert isinstance(caption, str)
-        assert len(caption) > 0
-
-
-class TestPipelineRun:
-    @pytest.fixture(autouse=True)
-    def mock_validate(self):
-        with patch("pipeline.runner.validate_video"):
-            yield
-
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        _, gen = mock_veo
-        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
-        _, pub = mock_tiktok
-        pub.publish.return_value = {
-            "publish_id": "pub123",
-            "status": "PUBLISH_COMPLETE",
-            "video_path": "/fake/output/video_20260224_001.mp4",
-        }
-        avail, used = prompt_files
-        from prompts.prompt_manager import PromptManager
-        pm = PromptManager(available_path=avail, used_path=used)
-        with patch("pipeline.runner.PromptManager", return_value=pm):
-            pipe = Pipeline(dry_run=False)
-        return pipe
-
-    @pytest.fixture
-    def dry_pipe(self, mock_veo, mock_tiktok, mock_storage, prompt_files):
-        _, gen = mock_veo
-        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
-        avail, used = prompt_files
-        from prompts.prompt_manager import PromptManager
-        pm = PromptManager(available_path=avail, used_path=used)
-        with patch("pipeline.runner.PromptManager", return_value=pm):
-            pipe = Pipeline(dry_run=True)
-        return pipe
-
-    def test_returns_dict(self, dry_pipe):
-        result = dry_pipe.run()
-        assert isinstance(result, dict)
-
-    def test_result_contains_required_keys(self, dry_pipe):
-        result = dry_pipe.run()
-        for key in ("prompt", "video_path", "caption", "hashtags",
-                    "publish_result", "status"):
-            assert key in result
-
-    def test_uses_provided_prompt(self, dry_pipe):
-        result = dry_pipe.run(prompt="A custom cat prompt")
-        assert result["prompt"] == "A custom cat prompt"
-
-    def test_selects_prompt_when_none_given(self, dry_pipe):
-        result = dry_pipe.run()
-        all_prompts = []
-        for prompts in SAMPLE_PROMPTS.values():
-            all_prompts.extend(prompts)
-        assert result["prompt"] in all_prompts
-
-    def test_calls_generator(self, dry_pipe):
-        dry_pipe.run(prompt="A cat on a couch")
-        dry_pipe.generator.generate.assert_called_once_with("A cat on a couch")
-
-    def test_video_path_in_result(self, dry_pipe):
-        result = dry_pipe.run(prompt="A cat on a couch")
-        assert result["video_path"] == "/fake/output/video_20260224_001.mp4"
-
-    def test_dry_run_skips_publish(self, dry_pipe):
-        result = dry_pipe.run(prompt="A cat on a couch")
-        assert result["status"] == "dry_run"
-        assert result["publish_result"] is None
-
-    def test_dry_run_logs_what_would_have_been_posted(self, dry_pipe):
-        with patch("pipeline.runner.logger") as mock_logger:
-            dry_pipe.run(prompt="A fluffy cat, sitting on a ledge")
-        info_calls = [c for c in mock_logger.info.call_args_list
-                      if "DRY_RUN" in str(c)]
-        assert len(info_calls) == 1
-        call_args = info_calls[0][0]
-        assert "would have posted" in call_args[0]
-        assert str(dry_pipe.generator.generate.return_value) in str(call_args[1])
-        assert "A fluffy cat" in call_args[2]
-        assert isinstance(call_args[3], list)
-
-    def test_publishes_when_not_dry_run(self, pipe):
-        result = pipe.run(prompt="A cat on a couch")
-        assert result["status"] == "published"
-        pipe.publisher.publish.assert_called_once()
-
-    def test_publish_receives_caption_and_hashtags(self, pipe):
-        pipe.run(prompt="A cat on a couch")
-        args = pipe.publisher.publish.call_args
-        assert args[0][0] == Path("/fake/output/video_20260224_001.mp4")
-        assert isinstance(args[0][1], str)   # caption
-        assert isinstance(args[0][2], list)  # hashtags
-
-    def test_publish_result_in_output(self, pipe):
-        result = pipe.run(prompt="A cat on a couch")
-        assert result["publish_result"]["publish_id"] == "pub123"
-
-    def test_saves_run_record(self, dry_pipe):
-        dry_pipe.run(prompt="A cat on a couch")
-        dry_pipe.storage.save_run.assert_called_once()
-        args = dry_pipe.storage.save_run.call_args[0]
-        assert args[0] == "A cat on a couch"
-        assert args[1] == Path("/fake/output/video_20260224_001.mp4")
-        assert isinstance(args[2], dict)
-
-    def test_generate_error_calls_handle_error_and_raises(self, dry_pipe):
-        dry_pipe.generator.generate.side_effect = RuntimeError("veo down")
-        with patch.object(dry_pipe, "_handle_error") as mock_handle:
-            with pytest.raises(RuntimeError, match="veo down"):
-                dry_pipe.run(prompt="A cat on a couch")
-        mock_handle.assert_called_once()
-        assert mock_handle.call_args[0][0] == "generate"
-
-    def test_publish_error_calls_handle_error_and_raises(self, pipe):
-        pipe.publisher.publish.side_effect = RuntimeError("upload failed")
-        with patch.object(pipe, "_handle_error") as mock_handle:
-            with pytest.raises(RuntimeError, match="upload failed"):
-                pipe.run(prompt="A cat on a couch")
-        mock_handle.assert_called_once()
-        assert mock_handle.call_args[0][0] == "publish"
-
-    def test_save_run_error_calls_handle_error_and_raises(self, dry_pipe):
-        dry_pipe.storage.save_run.side_effect = OSError("disk full")
-        with patch.object(dry_pipe, "_handle_error") as mock_handle:
-            with pytest.raises(OSError, match="disk full"):
-                dry_pipe.run(prompt="A cat on a couch")
-        mock_handle.assert_called_once()
-        assert mock_handle.call_args[0][0] == "save_run"
-
-    def test_caption_in_result(self, dry_pipe):
-        result = dry_pipe.run(prompt="A fluffy cat, sitting on a ledge")
-        assert result["caption"] == "A fluffy cat"
-
-    def test_hashtags_in_result(self, dry_pipe):
-        result = dry_pipe.run(prompt="A cat on a couch")
-        assert isinstance(result["hashtags"], list)
-        assert len(result["hashtags"]) > 0
-
-
-class TestHandleError:
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.PromptManager"):
-            return Pipeline(dry_run=True)
-
-    def test_does_not_raise(self, pipe):
-        pipe._handle_error("generate", ValueError("bad prompt"))
-
-    def test_logs_error_with_step_and_type(self, pipe):
-        err = RuntimeError("connection lost")
-        with patch("pipeline.runner.logger") as mock_logger:
-            pipe._handle_error("publish", err)
-        mock_logger.error.assert_called_once()
-        args = mock_logger.error.call_args
-        assert "publish" in args[0][1]
-        assert "RuntimeError" in args[0][2]
-
-    def test_logs_debug_traceback(self, pipe):
-        try:
-            raise ValueError("test error")
-        except ValueError as err:
-            with patch("pipeline.runner.logger") as mock_logger:
-                pipe._handle_error("generate", err)
-        mock_logger.debug.assert_called_once()
-        tb_str = mock_logger.debug.call_args[0][2]
-        assert "ValueError" in tb_str
-        assert "test error" in tb_str
-
-    def test_skips_email_when_not_configured(self, pipe):
-        with patch("pipeline.runner.settings.NOTIFY_EMAIL", ""):
-            with patch("pipeline.runner.smtplib") as mock_smtp:
-                pipe._handle_error("generate", ValueError("x"))
-        mock_smtp.SMTP.assert_not_called()
-
-    def test_sends_email_when_configured(self, pipe):
-        mock_smtp_instance = MagicMock()
-        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
-            with patch("pipeline.runner.smtplib.SMTP") as mock_smtp_cls:
-                mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp_instance)
-                mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
-                pipe._handle_error("publish", RuntimeError("upload failed"))
-        mock_smtp_instance.send_message.assert_called_once()
-        msg = mock_smtp_instance.send_message.call_args[0][0]
-        assert msg["To"] == "user@example.com"
-        assert "publish" in msg["Subject"]
-
-    def test_email_contains_error_details(self, pipe):
-        mock_smtp_instance = MagicMock()
-        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
-            with patch("pipeline.runner.smtplib.SMTP") as mock_smtp_cls:
-                mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp_instance)
-                mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
-                pipe._handle_error("generate", ValueError("bad input"))
-        msg = mock_smtp_instance.send_message.call_args[0][0]
-        body = msg.get_content()
-        assert "generate" in body
-        assert "ValueError" in body
-        assert "bad input" in body
-
-    def test_email_failure_does_not_raise(self, pipe):
-        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
-            with patch("pipeline.runner.smtplib.SMTP", side_effect=ConnectionRefusedError("no smtp")):
-                pipe._handle_error("publish", RuntimeError("fail"))
-
-    def test_email_failure_logs_warning(self, pipe):
-        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "user@example.com"):
-            with patch("pipeline.runner.smtplib.SMTP", side_effect=ConnectionRefusedError("no smtp")):
-                with patch("pipeline.runner.logger") as mock_logger:
-                    pipe._handle_error("publish", RuntimeError("fail"))
-        mock_logger.warning.assert_called_once()
-        assert "notification" in mock_logger.warning.call_args[0][0].lower()
-
-
-class TestSaveFailure:
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        with patch("pipeline.runner.PromptManager"):
-            return Pipeline(dry_run=True)
-
-    def test_saves_failure_record(self, pipe):
-        pipe._save_failure("test prompt", Path("/fake/video.mp4"), RuntimeError("boom"))
-        pipe.storage.save_run.assert_called_once()
-        args = pipe.storage.save_run.call_args[0]
-        assert args[0] == "test prompt"
-        assert args[1] == Path("/fake/video.mp4")
-        assert args[2]["status"] == "failed"
-        assert "RuntimeError: boom" in args[2]["error"]
-
-    def test_uses_unknown_prompt_when_none(self, pipe):
-        pipe._save_failure(None, None, ValueError("no prompt"))
-        args = pipe.storage.save_run.call_args[0]
-        assert args[0] == "unknown"
-
-    def test_handles_none_video_path(self, pipe):
-        pipe._save_failure("a prompt", None, RuntimeError("fail"))
-        args = pipe.storage.save_run.call_args[0]
-        assert args[2]["video_path"] is None
-
-    def test_save_error_does_not_raise(self, pipe):
-        pipe.storage.save_run.side_effect = OSError("disk full")
-        pipe._save_failure("p", None, RuntimeError("fail"))  # should not raise
-
-    def test_generate_failure_saves_record(self, mock_veo, mock_tiktok, mock_storage):
-        _, gen = mock_veo
-        gen.generate.side_effect = RuntimeError("veo down")
-        with patch("pipeline.runner.PromptManager"):
-            pipe = Pipeline(dry_run=True)
-        with pytest.raises(RuntimeError, match="veo down"):
-            pipe.run(prompt="A cat on a couch")
-        save_calls = [
-            c for c in pipe.storage.save_run.call_args_list
-            if c[0][2].get("status") == "failed"
+    with patch("pipeline.runner.StorageManager", return_value=mgr):
+        yield mgr
+
+
+@pytest.fixture
+def mock_validate():
+    with patch("pipeline.runner.validate_video") as v:
+        yield v
+
+
+@pytest.fixture
+def mock_clipper():
+    client = MagicMock()
+    client.upload_video.return_value = "up_1"
+    client.create_clip_project.return_value = "P123"
+    from clippers.opusclip import Clip
+    client.get_clips.return_value = (
+        Clip(id="c1", video_url="https://cdn/c1.mp4", title="Funny 1", raw={}),
+    )
+    client.download.side_effect = lambda url, dest: dest
+    with patch("pipeline.runner.OpusClipClient", return_value=client):
+        yield client
+
+
+ALL = ("mock_scripts", "mock_handoff", "mock_photos",
+       "mock_tiktok", "mock_storage", "mock_validate", "mock_clipper")
+
+
+@pytest.mark.usefixtures(*ALL)
+class TestPrepare:
+    def test_consumes_and_stages(self, mock_scripts, mock_handoff, mock_storage):
+        result = Pipeline(dry_run=False).prepare()
+        mock_scripts.consume_script.assert_called_once_with(None)
+        mock_handoff["prepare"].assert_called_once()
+        assert result["status"] == "prepared"
+        assert result["script_id"] == "belly-rub-betrayal"
+        mock_storage.save_run.assert_called_once()
+
+    def test_dry_run_peeks(self, mock_scripts):
+        Pipeline(dry_run=True).prepare()
+        mock_scripts.peek_script.assert_called_once_with(None)
+        mock_scripts.consume_script.assert_not_called()
+
+    def test_script_id_forwarded(self, mock_scripts):
+        Pipeline(dry_run=False).prepare(script_id="belly-rub-betrayal")
+        mock_scripts.consume_script.assert_called_once_with("belly-rub-betrayal")
+
+
+@pytest.mark.usefixtures(*ALL)
+class TestPublishInbox:
+    def test_publishes_ready_video(self, mock_handoff, mock_tiktok, mock_storage,
+                                   sample_script):
+        results = Pipeline(dry_run=False).publish_inbox()
+        assert len(results) == 1
+        r = results[0]
+        assert r["status"] == "published"
+        assert r["script_id"] == sample_script.id
+        assert r["prompt"] == sample_script.title
+        mock_tiktok.publish.assert_called_once()
+        mock_handoff["archive"].assert_called_once()
+        mock_storage.save_run.assert_called_once()
+
+    def test_caption_from_script(self, mock_tiktok):
+        Pipeline(dry_run=False).publish_inbox()
+        _, caption, hashtags = mock_tiktok.publish.call_args[0]
+        assert caption == "The belly was never an offer. It was a test."
+        assert len(hashtags) == len(set(hashtags))
+
+    def test_skips_when_no_inbox_video(self, mock_handoff, mock_tiktok):
+        mock_handoff["find"].return_value = None
+        results = Pipeline(dry_run=False).publish_inbox()
+        assert results == []
+        mock_tiktok.publish.assert_not_called()
+
+    def test_dry_run_does_not_publish_or_archive(self, mock_handoff, mock_tiktok):
+        results = Pipeline(dry_run=True).publish_inbox()
+        assert results[0]["status"] == "dry_run"
+        mock_tiktok.publish.assert_not_called()
+        mock_handoff["archive"].assert_not_called()
+
+    def test_validation_failure_recorded(self, mock_validate, mock_storage):
+        mock_validate.side_effect = RuntimeError("bad video")
+        with pytest.raises(RuntimeError):
+            Pipeline(dry_run=False).publish_inbox()
+        fail = mock_storage.save_run.call_args[0][2]
+        assert fail["status"] == "failed"
+
+
+@pytest.mark.usefixtures(*ALL)
+class TestClipFootage:
+    def test_full_clip_flow(self, mock_clipper, mock_storage, tmp_path):
+        video = tmp_path / "raw.mp4"
+        video.write_bytes(b"\x00")
+        with patch("pipeline.runner.time.sleep"):
+            result = Pipeline(dry_run=False).clip_footage(video)
+        mock_clipper.upload_video.assert_called_once_with(video)
+        mock_clipper.create_clip_project.assert_called_once()
+        assert result["project_id"] == "P123"
+        assert result["status"] == "clipped"
+        assert len(result["clips"]) == 1
+
+    def test_polls_until_clips_appear(self, mock_clipper, tmp_path):
+        from clippers.opusclip import Clip
+        video = tmp_path / "raw.mp4"
+        video.write_bytes(b"\x00")
+        mock_clipper.get_clips.side_effect = [
+            (), (),
+            (Clip(id="c1", video_url="https://cdn/c1.mp4", title="t", raw={}),),
         ]
-        assert len(save_calls) == 1
-        assert "RuntimeError" in save_calls[0][0][2]["error"]
+        with patch("pipeline.runner.time.sleep"):
+            Pipeline(dry_run=False).clip_footage(video)
+        assert mock_clipper.get_clips.call_count == 3
 
-    def test_publish_failure_saves_record(self, mock_veo, mock_tiktok, mock_storage):
-        _, gen = mock_veo
-        gen.generate.return_value = Path("/fake/video.mp4")
-        _, pub = mock_tiktok
-        pub.publish.side_effect = RuntimeError("upload failed")
-        with patch("pipeline.runner.PromptManager"):
-            pipe = Pipeline(dry_run=False)
-        with patch("pipeline.runner.validate_video"):
-            with pytest.raises(RuntimeError, match="upload failed"):
-                pipe.run(prompt="A cat on a couch")
-        save_calls = [
-            c for c in pipe.storage.save_run.call_args_list
-            if c[0][2].get("status") == "failed"
-        ]
-        assert len(save_calls) == 1
-        assert save_calls[0][0][2]["video_path"] == "/fake/video.mp4"
+    def test_timeout_raises(self, mock_clipper, tmp_path):
+        video = tmp_path / "raw.mp4"
+        video.write_bytes(b"\x00")
+        mock_clipper.get_clips.return_value = ()
+        fake_clock = iter(range(0, 100000, 600))
+        with patch("pipeline.runner.time.sleep"), \
+             patch("pipeline.runner.time.monotonic",
+                   side_effect=lambda: next(fake_clock)):
+            with pytest.raises(TimeoutError):
+                Pipeline(dry_run=False).clip_footage(video)
 
 
-class TestValidateVideoIntegration:
-    @pytest.fixture
-    def pipe(self, mock_veo, mock_tiktok, mock_storage):
-        _, gen = mock_veo
-        gen.generate.return_value = Path("/fake/output/video_20260224_001.mp4")
-        with patch("pipeline.runner.PromptManager"):
-            pipe = Pipeline(dry_run=True)
-        return pipe
+@pytest.mark.usefixtures(*ALL)
+class TestRunDaily:
+    def test_publishes_then_prepares_when_empty(self, mock_handoff, mock_scripts):
+        # after publishing, nothing pending → prepare next
+        mock_handoff["pending"].side_effect = [(mock_scripts.consume_script.return_value.id,), ()]
+        result = Pipeline(dry_run=False).run()
+        assert result["status"] == "ok"
+        assert result["prepared"] is not None
 
-    def test_validation_error_calls_handle_error_and_raises(self, pipe):
-        from utils.video_validator import VideoValidationError
-        with patch("pipeline.runner.validate_video",
-                   side_effect=VideoValidationError("corrupt")):
-            with patch.object(pipe, "_handle_error") as mock_handle:
-                with pytest.raises(VideoValidationError, match="corrupt"):
-                    pipe.run(prompt="A cat on a couch")
-        mock_handle.assert_called_once()
-        assert mock_handle.call_args[0][0] == "validate_video"
-
-    def test_validation_error_saves_failure_record(self, pipe):
-        from utils.video_validator import VideoValidationError
-        with patch("pipeline.runner.validate_video",
-                   side_effect=VideoValidationError("bad mp4")):
-            with pytest.raises(VideoValidationError):
-                pipe.run(prompt="A cat on a couch")
-        save_calls = [
-            c for c in pipe.storage.save_run.call_args_list
-            if c[0][2].get("status") == "failed"
-        ]
-        assert len(save_calls) == 1
-        assert "VideoValidationError" in save_calls[0][0][2]["error"]
-
-    def test_validate_video_called_with_generated_path(self, pipe):
-        with patch("pipeline.runner.validate_video") as mock_val:
-            pipe.run(prompt="A cat on a couch")
-        mock_val.assert_called_once_with(
-            Path("/fake/output/video_20260224_001.mp4"),
-        )
+    def test_no_prepare_while_pending(self, mock_handoff, mock_scripts):
+        mock_handoff["find"].return_value = None      # video not dropped yet
+        result = Pipeline(dry_run=False).run()
+        assert result["prepared"] is None
+        mock_scripts.consume_script.assert_not_called()
