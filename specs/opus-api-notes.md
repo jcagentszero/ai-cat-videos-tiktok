@@ -60,3 +60,23 @@ Generation cannot be fully automated with the current PRO API key. Viable paths:
    request may unlock a documented path (likely Business/Enterprise plan).
 3. **Different generation backend with a real API** (Veo was removed 2026-07-04;
    Sora/Runway/Kling/Luma alternatives exist).
+
+## Addendum: OpusClip REST contracts used by the real-footage lane
+
+Captured verbatim from the official docs on 2026-07-04
+(help.opus.pro/api-reference/endpoints/upload-video-create-project.md and
+get-clips.md OpenAPI):
+
+- `POST /api/upload-links` body `{"video": {"usecase": "LocalUpload"}}` →
+  `{url, uploadId, dnsUrl, useAmount, totalAmount}`.
+- Resumable init: `POST <url>` with `x-goog-resumable: start`,
+  `Content-Length: 0`, NO Opus auth (signed GCS URL) → 201 with `location`
+  response header; then `PUT <location>` with the file bytes
+  (`Content-Type: application/octet-stream`).
+- `POST /api/clip-projects` body `{"videoUrl": "<uploadId>", "curationPref":
+  {clipDurations, topicKeywords, genre, skipCurate}, "importPref":
+  {"sourceLang": "auto"}}` → project representation (`projectId`, ...).
+  Required field: videoUrl only.
+- `GET /api/exportable-clips?q=findByProjectId&projectId=<id>` with optional
+  `x-opus-org-id` header → array of clips. Clip field names are not fully
+  documented; clippers/opusclip.py maps them defensively and keeps `raw`.
