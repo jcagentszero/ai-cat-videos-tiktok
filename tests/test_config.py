@@ -7,8 +7,6 @@ from config.settings import validate_config
 
 def _patch_vars(**overrides):
     defaults = {
-        "GCP_PROJECT_ID": "test-project",
-        "GCP_CREDENTIALS": "/path/to/creds.json",
         "TIKTOK_CLIENT_KEY": "key123",
         "TIKTOK_CLIENT_SECRET": "secret456",
         "OPUS_API_KEY": "ok_test",
@@ -52,10 +50,6 @@ class TestValidateConfigOpus:
         with _patch_vars(OPUS_API_KEY=""):
             with pytest.raises(ValueError, match="OPUS_API_KEY"):
                 validate_config()
-
-    def test_gcp_vars_no_longer_required(self):
-        with _patch_vars(GCP_PROJECT_ID="", GCP_CREDENTIALS=""):
-            validate_config()
 
     def test_dry_run_still_requires_opus_key(self):
         with _patch_vars(OPUS_API_KEY=""):

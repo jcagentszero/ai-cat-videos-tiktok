@@ -18,12 +18,6 @@ OUTPUT_DIR = ROOT_DIR / os.getenv("OUTPUT_DIR", "output")
 LOGS_DIR   = ROOT_DIR / "logs"
 CREDS_DIR  = ROOT_DIR / "credentials"
 
-# ── Google Cloud / Veo 3 ─────────────────────────────────────────────────────
-GCP_PROJECT_ID  = os.getenv("GOOGLE_CLOUD_PROJECT_ID", "")
-GCP_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-VEO_MODEL       = os.getenv("VEO_MODEL", "veo-3.1-fast-generate-001")
-VEO_REGION      = os.getenv("VEO_REGION", "us-central1")
-
 # ── Agent Opus ────────────────────────────────────────────────────────────────
 OPUS_API_KEY       = os.getenv("AGENT_OPUS_API_KEY", os.getenv("OPUS_API_KEY", ""))
 OPUS_API_BASE      = os.getenv("OPUS_API_BASE", "https://api.opus.pro/api")
