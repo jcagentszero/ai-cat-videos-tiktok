@@ -97,6 +97,16 @@ def main():
         logger.error("--script requires --prepare")
         sys.exit(1)
 
+    try:
+        validate_config(dry_run=args.dry_run)
+    except ValueError as e:
+        logger.error("Configuration error: {}", e)
+        sys.exit(1)
+
+    if args.dry_run:
+        import config.settings as _settings
+        _settings.DRY_RUN = True
+
     from pipeline.runner import Pipeline
 
     if args.clip:
@@ -134,16 +144,6 @@ def main():
                 logger.error("Prepare {}/{} failed: {}", i + 1, args.count, e)
                 sys.exit(1)
         return
-
-    try:
-        validate_config(dry_run=args.dry_run)
-    except ValueError as e:
-        logger.error("Configuration error: {}", e)
-        sys.exit(1)
-
-    if args.dry_run:
-        import config.settings as _settings
-        _settings.DRY_RUN = True
 
     # Default: daily routine (used by --schedule too)
     for i in range(args.count):

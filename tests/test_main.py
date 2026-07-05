@@ -7,7 +7,8 @@ from main import main
 class TestMainTwoLane:
     @pytest.fixture(autouse=True)
     def mock_validate(self):
-        with patch("main.validate_config"):
+        with patch("main.validate_config") as mv:
+            self.mock_validate_config = mv
             yield
 
     @pytest.fixture(autouse=True)
@@ -70,6 +71,16 @@ class TestMainTwoLane:
         with patch("sys.argv", ["main.py", "--script", "some-id"]):
             with pytest.raises(SystemExit):
                 main()
+
+    def test_prepare_count_runs_multiple(self):
+        with patch("sys.argv", ["main.py", "--prepare", "--count", "3"]):
+            main()
+        assert self.pipeline_instance.prepare.call_count == 3
+
+    def test_lane_flag_validates_config(self):
+        with patch("sys.argv", ["main.py", "--publish"]):
+            main()
+        self.mock_validate_config.assert_called_once()
 
 
 class TestMainDryRun:
