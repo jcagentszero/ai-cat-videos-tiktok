@@ -4,6 +4,74 @@ from unittest.mock import patch, MagicMock
 from main import main
 
 
+class TestMainTwoLane:
+    @pytest.fixture(autouse=True)
+    def mock_validate(self):
+        with patch("main.validate_config"):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def mock_pipeline(self):
+        pipe_instance = MagicMock()
+        pipe_instance.run.return_value = {"published": [], "prepared": None, "status": "ok"}
+        pipe_instance.prepare.return_value = {"script_id": "x", "status": "prepared"}
+        pipe_instance.publish_inbox.return_value = []
+        pipe_instance.clip_footage.return_value = {"project_id": "P1", "clips": [], "status": "clipped"}
+        with patch("pipeline.runner.Pipeline", return_value=pipe_instance) as cls:
+            self.pipeline_cls = cls
+            self.pipeline_instance = pipe_instance
+            yield
+
+    def test_prepare_invokes_prepare(self):
+        with patch("sys.argv", ["main.py", "--prepare"]):
+            main()
+        self.pipeline_instance.prepare.assert_called_once_with(script_id=None)
+
+    def test_prepare_with_script_id(self):
+        with patch("sys.argv", ["main.py", "--prepare", "--script", "belly-rub-betrayal"]):
+            main()
+        self.pipeline_instance.prepare.assert_called_once_with(
+            script_id="belly-rub-betrayal",
+        )
+
+    def test_publish_invokes_publish_inbox(self):
+        with patch("sys.argv", ["main.py", "--publish"]):
+            main()
+        self.pipeline_instance.publish_inbox.assert_called_once()
+
+    def test_clip_invokes_clip_footage(self, tmp_path):
+        video = tmp_path / "raw.mp4"
+        video.write_bytes(b"\x00")
+        with patch("sys.argv", ["main.py", "--clip", str(video)]):
+            main()
+        self.pipeline_instance.clip_footage.assert_called_once()
+
+    def test_clip_missing_file_exits(self):
+        with patch("sys.argv", ["main.py", "--clip", "/nope/missing.mp4"]):
+            with pytest.raises(SystemExit):
+                main()
+
+    def test_default_runs_daily_routine(self):
+        with patch("sys.argv", ["main.py"]):
+            main()
+        self.pipeline_instance.run.assert_called_once_with()
+
+    def test_prompt_flag_rejected(self):
+        with patch("sys.argv", ["main.py", "--prompt", "A sleepy cat"]):
+            with pytest.raises(SystemExit):
+                main()
+
+    def test_category_flag_rejected(self):
+        with patch("sys.argv", ["main.py", "--category", "funny"]):
+            with pytest.raises(SystemExit):
+                main()
+
+    def test_script_without_prepare_rejected(self):
+        with patch("sys.argv", ["main.py", "--script", "some-id"]):
+            with pytest.raises(SystemExit):
+                main()
+
+
 class TestMainDryRun:
     @pytest.fixture(autouse=True)
     def mock_validate(self):
