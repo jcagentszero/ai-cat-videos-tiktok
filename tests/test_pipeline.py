@@ -78,6 +78,22 @@ def mock_clipper():
         yield client
 
 
+@pytest.fixture
+def overlapping_script(script_file, tmp_path):
+    """Script whose hashtags collide with BASE_HASHTAGS and NIKA.hashtags.
+
+    'catvideos' is already in Pipeline.BASE_HASHTAGS and 'nikathecat' is
+    already in NIKA.hashtags — only 'bellyrubtrapz' is unique to the script.
+    """
+    text = script_file.read_text().replace(
+        "  - bellyrub\n  - cattrap",
+        "  - catvideos\n  - nikathecat\n  - bellyrubtrapz",
+    )
+    path = tmp_path / "overlap.md"
+    path.write_text(text)
+    return parse_script(path)
+
+
 ALL = ("mock_scripts", "mock_handoff", "mock_photos",
        "mock_tiktok", "mock_storage", "mock_validate", "mock_clipper")
 
@@ -141,6 +157,31 @@ class TestPublishInbox:
         fail = mock_storage.save_run.call_args[0][2]
         assert fail["status"] == "failed"
 
+    def test_hashtags_deduped_base_first(self, mock_handoff, mock_tiktok,
+                                         overlapping_script):
+        # Adversarial dedup: the script re-declares 'catvideos' (BASE) and
+        # 'nikathecat' (NIKA) — naive concat would duplicate them, and an
+        # unordered dedup (set) would scramble the base-first ordering.
+        mock_handoff["load"].return_value = overlapping_script
+        Pipeline(dry_run=False).publish_inbox()
+        _, _, hashtags = mock_tiktok.publish.call_args[0]
+
+        assert len(hashtags) == len(set(hashtags)), "duplicates survived dedup"
+        # dict.fromkeys keeps the FIRST occurrence: duplicates re-declared by
+        # the script stay at their base/persona position, and only the tag
+        # unique to the script lands at the end.
+        assert hashtags == [
+            # BASE_HASHTAGS, in declaration order
+            "catvideos", "catsoftiktok", "aiart", "aigenerated",
+            # NIKA.hashtags, in declaration order
+            "nikathecat", "grumpybutsweet", "exoticshorthair", "grumpycat2",
+            # only the script-unique tag remains from the script's list
+            "bellyrubtrapz",
+        ]
+        assert (hashtags.index("catvideos")
+                < hashtags.index("nikathecat")
+                < hashtags.index("bellyrubtrapz"))
+
 
 @pytest.mark.usefixtures(*ALL)
 class TestClipFootage:
@@ -193,3 +234,53 @@ class TestRunDaily:
         result = Pipeline(dry_run=False).run()
         assert result["prepared"] is None
         mock_scripts.consume_script.assert_not_called()
+
+
+@pytest.mark.usefixtures(*ALL)
+class TestSaveFailure:
+    def test_failure_record_has_script_id_and_error(self, mock_validate,
+                                                    mock_storage, sample_script):
+        mock_validate.side_effect = RuntimeError("bad video")
+        with pytest.raises(RuntimeError):
+            Pipeline(dry_run=False).publish_inbox()
+        fail = mock_storage.save_run.call_args[0][2]
+        assert fail["status"] == "failed"
+        assert fail["script_id"] == sample_script.id
+        assert fail["error"] == "RuntimeError: bad video"
+
+    def test_storage_error_swallowed_original_raised(self, mock_validate,
+                                                     mock_storage):
+        # If save_run itself blows up while recording the failure, the
+        # ORIGINAL error must still be the one that propagates.
+        mock_validate.side_effect = RuntimeError("bad video")
+        mock_storage.save_run.side_effect = OSError("disk full")
+        with pytest.raises(RuntimeError, match="bad video"):
+            Pipeline(dry_run=False).publish_inbox()
+
+
+@pytest.mark.usefixtures(*ALL)
+class TestHandleError:
+    def test_no_email_when_notify_unset(self):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", ""), \
+             patch("pipeline.runner.smtplib.SMTP") as smtp_cls:
+            Pipeline(dry_run=True)._handle_error("prepare", RuntimeError("boom"))
+        smtp_cls.assert_not_called()
+
+    def test_email_sent_when_notify_set(self):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "ops@example.com"), \
+             patch("pipeline.runner.smtplib.SMTP") as smtp_cls:
+            Pipeline(dry_run=True)._handle_error(
+                "publish_inbox", RuntimeError("boom"),
+            )
+        smtp_cls.assert_called_once_with("localhost")
+        sent = smtp_cls.return_value.__enter__.return_value \
+            .send_message.call_args[0][0]
+        assert "publish_inbox" in sent["Subject"]
+        assert sent["To"] == "ops@example.com"
+
+    def test_smtp_failure_swallowed(self):
+        with patch("pipeline.runner.settings.NOTIFY_EMAIL", "ops@example.com"), \
+             patch("pipeline.runner.smtplib.SMTP",
+                   side_effect=OSError("smtp down")):
+            # must not raise despite the notification failure
+            Pipeline(dry_run=True)._handle_error("prepare", RuntimeError("boom"))
