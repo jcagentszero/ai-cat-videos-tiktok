@@ -27,6 +27,7 @@ VEO_REGION      = os.getenv("VEO_REGION", "us-central1")
 # ── Agent Opus ────────────────────────────────────────────────────────────────
 OPUS_API_KEY       = os.getenv("AGENT_OPUS_API_KEY", os.getenv("OPUS_API_KEY", ""))
 OPUS_API_BASE      = os.getenv("OPUS_API_BASE", "https://api.opus.pro/api")
+OPUS_ORG_ID        = os.getenv("OPUS_ORG_ID", "")
 OPUS_POLL_TIMEOUT  = int(os.getenv("OPUS_POLL_TIMEOUT", "1800"))
 OPUS_POLL_INTERVAL = int(os.getenv("OPUS_POLL_INTERVAL", "15"))
 # Escape hatch: pre-registered dashboard asset IDs, comma-separated.
