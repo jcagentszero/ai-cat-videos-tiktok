@@ -1040,7 +1040,7 @@ git push
 
 ---
 
-### Task 6: OpusClient — thin HTTP client (spike-shaped file)
+### SUPERSEDED by amendment2 (do not execute) — old Task 6 OpusClient
 
 **Files:**
 - Create: `generators/opus_client.py`
@@ -1386,7 +1386,7 @@ git push
 
 ---
 
-### Task 7: OpusGenerator — submit → poll → download
+### SUPERSEDED by amendment2 (do not execute) — old Task 7 OpusGenerator
 
 **Files:**
 - Create: `generators/opus.py`
@@ -1678,7 +1678,7 @@ git commit -m "refactor: remove Veo backend, legacy prompt pools, and Google Clo
 git push
 ```
 
-### Task 9: Pipeline integration
+### SUPERSEDED by amendment2 (do not execute) — old Task 9 Pipeline integration
 
 **Files:**
 - Modify: `pipeline/runner.py` (imports, `__init__`, `run`, `_select_prompt` → `_select_script`, `_build_caption`, `_save_failure`)
@@ -2018,7 +2018,7 @@ git push
 
 ---
 
-### Task 10: CLI — --script flag, retire --category/--prompt
+### SUPERSEDED by amendment2 (do not execute) — old Task 10 CLI
 
 **Files:**
 - Modify: `main.py`
