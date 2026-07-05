@@ -36,3 +36,6 @@ credentials/
 reference/nika/*
 !reference/nika/README.md
 !reference/nika/.gitkeep
+
+# Manual handoff working area (scripts staged for Agent Opus + rendered videos)
+handoff/

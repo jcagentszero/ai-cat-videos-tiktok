@@ -39,6 +39,9 @@ OPUS_REFERENCE_ASSET_IDS = tuple(
 # ── Reference photos (Nika) ──────────────────────────────────────────────────
 REFERENCE_PHOTOS_DIR = ROOT_DIR / os.getenv("REFERENCE_PHOTOS_DIR", "reference/nika")
 
+# ── AI-lane handoff (Agent Opus manual render) ───────────────────────────────
+HANDOFF_DIR = ROOT_DIR / os.getenv("HANDOFF_DIR", "handoff")
+
 # ── TikTok ────────────────────────────────────────────────────────────────────
 TIKTOK_CLIENT_KEY    = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
